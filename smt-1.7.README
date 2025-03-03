@@ -1,0 +1,1099 @@
+# smt-1.4.py
+import win32api
+import win32gui
+import win32con
+import random
+import time
+import os
+import math
+from ctypes import (
+    windll,
+    Structure,
+    c_long,
+    POINTER,
+)
+from base_input_tester import BaseInputTester
+
+"""
+SafeMouseTester v1.4 - An advanced utility for testing mouse input in an isolated environment.
+
+What does this program do?
+-------------------------
+This program creates a special hidden window that can simulate mouse movements, clicks,
+and scrolling, much like a virtual person using a mouse. The key difference is that it
+doesn't actually affect other programs running on your computer - it's "isolated."
+
+It can generate several types of realistic mouse behaviors:
+- Random movements in any direction
+- Straight-line movements from one point to another
+- Circular movements that trace a circle on the screen
+- Targeted movements that head toward specific points (like buttons or icons)
+- Clicking (left, right, or middle button)
+- Double-clicking
+- Scrolling up and down
+
+The program even simulates human-like motion physics, such as:
+- Starting movements a bit slower, then accelerating
+- Slowing down as the cursor approaches its destination
+- Adding slight curves to movements rather than perfectly straight lines
+- Ensuring movements stay within the visible screen area
+
+Imagine having a robot that can move and click a mouse in a remarkably human-like way,
+without interfering with your other programs! That's what this program does.
+
+For new Python programmers:
+--------------------------
+This file builds on the BaseInputTester class we saw earlier. It's like taking the
+blueprint for a generic vehicle and adding all the special features needed to make
+it specifically into a motorcycle.
+
+The BaseInputTester gave us the basic framework, and now we're adding all the
+mouse-specific features to create a complete mouse testing tool.
+"""
+
+# Windows message constants for mouse events
+WM_MOUSEMOVE = 0x0200
+WM_LBUTTONDOWN = 0x0201
+WM_LBUTTONUP = 0x0202
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP = 0x0205
+WM_MBUTTONDOWN = 0x0207
+WM_MBUTTONUP = 0x0208
+WM_MOUSEWHEEL = 0x020A
+WM_LBUTTONDBLCLK = 0x0203
+
+"""
+What are these constants?
+-----------------------
+These are special codes used by Windows to indicate different types of mouse events:
+
+WM_MOUSEMOVE - Sent when the mouse cursor moves
+WM_LBUTTONDOWN - Sent when the left mouse button is pressed down
+WM_LBUTTONUP - Sent when the left mouse button is released
+WM_RBUTTONDOWN/UP - Similar, but for the right mouse button
+WM_MBUTTONDOWN/UP - Similar, but for the middle mouse button (scroll wheel)
+WM_MOUSEWHEEL - Sent when the scroll wheel is rotated
+WM_LBUTTONDBLCLK - Sent when the left button is double-clicked
+
+These codes help Windows and programs understand what kind of mouse event happened.
+Think of them like different signals that tell a program "the mouse moved" or
+"the user clicked the left button" so it knows how to respond.
+"""
+
+
+class MSLLHOOKSTRUCT(Structure):
+    """
+    Structure that contains information about a low-level mouse input event.
+
+    What is this structure?
+    ---------------------
+    This defines a special container for information about mouse events.
+    When Windows detects mouse activity, it gathers several pieces of
+    information: where the mouse is positioned, which button was clicked,
+    how much the wheel was scrolled, etc.
+
+    This structure gives us a way to organize and access all that information.
+    It's like having a form with specific fields for recording everything about
+    a mouse event.
+
+    For new Python programmers:
+    --------------------------
+    A "Structure" in this context is a way to organize related data. It's similar
+    to a class, but more focused on simply grouping data fields together rather
+    than combining data with behaviors.
+
+    The "_fields_" list defines what information this structure will contain.
+
+    Attributes:
+        pt_x (c_long): x-coordinate of the mouse position (horizontal position).
+        pt_y (c_long): y-coordinate of the mouse position (vertical position).
+        mouseData (c_long): Additional information like how much the wheel scrolled.
+        flags (c_long): Special indicators about the mouse event.
+        time (c_long): When this event happened (in milliseconds).
+        dwExtraInfo (POINTER(c_long)): Any additional information about the event.
+    """
+    _fields_ = [
+        ("pt_x", c_long),
+        ("pt_y", c_long),
+        ("mouseData", c_long),
+        ("flags", c_long),
+        ("time", c_long),
+        ("dwExtraInfo", POINTER(c_long)),
+    ]
+
+
+class SafeMouseTester(BaseInputTester):
+    """
+    An advanced class for testing mouse input in an isolated environment.
+
+    What does this class do?
+    ----------------------
+    This class creates a sophisticated system for simulating mouse input. It can
+    generate movement patterns that closely mimic how humans actually use a mouse,
+    including natural curves, acceleration/deceleration, and realistic clicking.
+
+    The key feature is that it does this in an "isolated" way - meaning it doesn't
+    actually interfere with other programs running on your computer. The simulated
+    mouse actions only affect a special hidden window created just for testing.
+
+    Some of the cool things it can simulate:
+    - Different types of mouse movements (random, straight-line, circular, targeted)
+    - Clicking, double-clicking, and scrolling
+    - Human-like physics (acceleration, curves, deceleration)
+    - Screen-aware behavior (staying within visible boundaries)
+
+    For new Python programmers:
+    --------------------------
+    This class "inherits from" (builds upon) the BaseInputTester class. This means
+    it gets all the general features of BaseInputTester, plus it adds its own
+    mouse-specific capabilities.
+
+    Imagine if BaseInputTester is a general blueprint for a vehicle, then
+    SafeMouseTester adds all the specific features needed to make it into a motorcycle.
+
+    Attributes:
+        hidden_window (int): Handle to the hidden window for mouse event simulation.
+        screen_width (int): Width of the screen in pixels (how wide the display is).
+        screen_height (int): Height of the screen in pixels (how tall the display is).
+        current_x (int): Current horizontal position of the simulated mouse cursor.
+        current_y (int): Current vertical position of the simulated mouse cursor.
+        movement_patterns (list): List of available types of movements to simulate.
+        movement_pattern_weights (list): How likely each movement pattern is to be chosen.
+        current_movement_pattern (str): Which movement pattern is currently active.
+    """
+
+    def __init__(self, config_file="smt.config"):
+        """
+        Initialize the SafeMouseTester with parameters from config file.
+
+        What does this method do?
+        -----------------------
+        This method sets up a new SafeMouseTester with all the necessary
+        starting values. It loads configuration settings from a file, initializes
+        variables, and prepares everything needed for mouse testing.
+
+        It's like preparing a new motorcycle for a ride - checking the gas,
+        adjusting the mirrors, making sure the engine is running smoothly, etc.
+
+        Args:
+            config_file (str, optional): Path to the configuration file. If not
+                                        provided, it will look for a file named
+                                        "smt.config" in the same directory.
+                                        Defaults to "smt.config".
+
+        How it works:
+        -----------
+        1. Calls the parent class's initialization (BaseInputTester)
+        2. Sets up window handles
+        3. Gets the screen dimensions to know the boundaries for mouse movement
+        4. Sets the starting position of the simulated mouse cursor
+        5. Sets up movement patterns and their weights
+        6. Caches frequently used configuration values for better performance
+        7. Sets up parameters for different types of movements and clicks
+        """
+        super().__init__(config_file)
+
+        # Initialize window handles to None
+        self.hidden_window = None
+        self.test_window = None
+
+        # Get screen dimensions
+        self.screen_width = win32api.GetSystemMetrics(0)
+        self.screen_height = win32api.GetSystemMetrics(1)
+
+        # Set default starting position to center of screen
+        self.current_x = self.screen_width // 2
+        self.current_y = self.screen_height // 2
+
+        # Movement patterns
+        self.movement_patterns = self.config.get("movement_patterns", ["random"])
+        self.movement_pattern_weights = self.config.get("movement_pattern_weights", [1.0])
+        # Ensure weights list is the same length as patterns list
+        if len(self.movement_pattern_weights) < len(self.movement_patterns):
+            self.movement_pattern_weights.extend([1.0] * (len(self.movement_patterns) - len(self.movement_pattern_weights)))
+        self.current_movement_pattern = None
+
+        # Cache frequently used config values
+        self.movement_min_distance = self.config.get("movement_min_distance", 10)
+        self.movement_max_distance = self.config.get("movement_max_distance", 100)
+        self.click_probability = self.config.get("click_probability", 0.2)
+        self.scroll_probability = self.config.get("scroll_probability", 0.1)
+        self.double_click_probability = self.config.get("double_click_probability", 0.05)
+
+        # Button types and weights
+        self.button_types = self.config.get("button_types", ["left", "right", "middle"])
+        self.button_weights = self.config.get("button_weights", [0.7, 0.2, 0.1])
+
+        # Targeted movement targets
+        self.targeted_targets = self.config.get("targeted_targets", [{"x_ratio": 0.5, "y_ratio": 0.5, "weight": 5}])
+
+        # Circular movement parameters
+        self.circular_min_radius = self.config.get("circular_min_radius", 20)
+        self.circular_max_radius = self.config.get("circular_max_radius", 150)
+        self.circular_min_steps = self.config.get("circular_min_steps", 8)
+        self.circular_max_steps = self.config.get("circular_max_steps", 24)
+
+        # Linear movement parameters
+        self.linear_min_steps = self.config.get("linear_min_steps", 5)
+        self.linear_max_steps = self.config.get("linear_max_steps", 20)
+
+    def create_test_window(self):
+        """
+        Create a hidden window for mouse event simulation.
+
+        What does this method do?
+        -----------------------
+        This method creates a special window that's completely invisible to the user
+        but can receive mouse input events. It's like having an invisible canvas
+        that we can send mouse movements and clicks to without affecting any
+        visible programs.
+
+        This window is:
+        - Transparent (you can't see it)
+        - Very small (just 1x1 pixel)
+        - Always on top (it stays above other windows)
+        - Click-through (mouse clicks pass through it to programs underneath)
+
+        This hidden window serves as a target for our simulated mouse events,
+        allowing us to test mouse behaviors without disrupting the user's work.
+
+        How it works:
+        -----------
+        1. Makes the process DPI-aware (ensures proper display scaling)
+        2. Registers a window class (a template for the window)
+        3. Creates the actual window with special properties to make it hidden
+        4. Sets transparency attributes (just in case it becomes visible)
+        5. Stores the window handle for later use
+        6. Logs the creation of the window
+        """
+        windll.user32.SetProcessDPIAware()
+
+        # Register window class
+        wc = win32gui.WNDCLASS()
+        wc.lpfnWndProc = self.window_proc
+        wc.lpszClassName = "IsolatedMouseTester"
+        wc.hInstance = win32api.GetModuleHandle(None)
+
+        try:
+            win32gui.RegisterClass(wc)
+        except Exception:
+            # Class might already be registered, which is fine
+            pass
+
+        # Create hidden window (1x1 pixel)
+        self.hidden_window = win32gui.CreateWindowEx(
+            win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOPMOST,
+            wc.lpszClassName,
+            "Isolated Mouse Test",
+            win32con.WS_POPUP,  # Hidden window
+            0,
+            0,
+            1,
+            1,  # 1x1 pixel size
+            0,
+            0,
+            wc.hInstance,
+            None,
+        )
+
+        # Set layered window attributes (just in case we make it visible for debugging)
+        win32gui.SetLayeredWindowAttributes(
+            self.hidden_window, 0, 1, win32con.LWA_ALPHA
+        )
+
+        # Store window handle in both attributes for compatibility
+        self.test_window = self.hidden_window
+
+        self.logger.info(f"Created new hidden window with handle: {self.hidden_window}")
+
+    def simulate_mouse_move(self, to_x, to_y):
+        """
+        Simulate a mouse movement to a specific position.
+
+        What does this method do?
+        -----------------------
+        This method simulates moving the mouse cursor to a specific X,Y position
+        on the screen. It ensures the position is within the screen boundaries,
+        sends the appropriate Windows message, and updates the current position.
+
+        It's the foundation for all mouse movement simulations, as the more complex
+        movement patterns (like circles or targeted moves) are built by making a
+        series of these simple movements.
+
+        Args:
+            to_x (int): The horizontal (X) coordinate to move to.
+            to_y (int): The vertical (Y) coordinate to move to.
+
+        Returns:
+            bool: True if the movement was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Ensures the target coordinates are within the screen boundaries
+        2. Packs the coordinates into a format that Windows understands
+        3. Sends a mouse move message to the hidden window
+        4. Updates the current position variables
+        5. Increments the event counter
+        6. Returns whether the operation was successful
+        7. Catches and logs any errors that might occur
+        """
+        if self.hidden_window:
+            try:
+                # Ensure coordinates are within screen bounds
+                to_x = max(0, min(self.screen_width - 1, to_x))
+                to_y = max(0, min(self.screen_height - 1, to_y))
+
+                # Pack coordinates into lparam (low-order word has x, high-order word has y)
+                lparam = to_y << 16 | to_x
+
+                # Send mouse move message
+                win32gui.PostMessage(self.hidden_window, WM_MOUSEMOVE, 0, lparam)
+
+                # Update current position
+                self.current_x = to_x
+                self.current_y = to_y
+
+                self.event_count += 1
+                return True
+            except Exception as e:
+                self.logger.error(f"Error simulating mouse move: {e}")
+                return False
+        return False
+
+    def simulate_mouse_click(self, button_type="left", double_click=False):
+        """
+        Simulate a mouse click at the current position.
+
+        What does this method do?
+        -----------------------
+        This method simulates clicking a mouse button at the current cursor position.
+        It can simulate left, right, or middle button clicks, as well as double-clicks.
+
+        For each type of click, it sends the appropriate sequence of Windows messages
+        (button down, then button up) with realistic timing between them.
+
+        Args:
+            button_type (str, optional): Which mouse button to click:
+                                        "left", "right", or "middle".
+                                        Defaults to "left".
+            double_click (bool, optional): Whether to simulate a double-click instead
+                                          of a single click. Defaults to False.
+
+        Returns:
+            bool: True if the click was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Packs the current cursor position into a format Windows understands
+        2. Determines which message types to use based on the button type
+        3. For a double-click, either:
+           a. Sends a special double-click message (for left button), or
+           b. Sends two separate click sequences with appropriate timing
+        4. For a single click, sends button down followed by button up
+        5. Adds realistic delays between events
+        6. Increments the event counter
+        7. Returns whether the operation was successful
+        8. Catches and logs any errors that might occur
+        """
+        if self.hidden_window:
+            try:
+                # Pack coordinates into lparam
+                lparam = self.current_y << 16 | self.current_x
+
+                # Determine message types based on button
+                if button_type == "left":
+                    down_msg = WM_LBUTTONDOWN
+                    up_msg = WM_LBUTTONUP
+                    dblclk_msg = WM_LBUTTONDBLCLK
+                elif button_type == "right":
+                    down_msg = WM_RBUTTONDOWN
+                    up_msg = WM_RBUTTONUP
+                    dblclk_msg = None  # No standard right double-click message
+                elif button_type == "middle":
+                    down_msg = WM_MBUTTONDOWN
+                    up_msg = WM_MBUTTONUP
+                    dblclk_msg = None  # No standard middle double-click message
+                else:
+                    self.logger.warning(f"Invalid button type: {button_type}")
+                    return False
+
+                if double_click and button_type == "left":
+                    # Send double-click message directly
+                    win32gui.PostMessage(self.hidden_window, dblclk_msg, 0, lparam)
+
+                    # Brief delay
+                    time.sleep(0.05)
+
+                    # Send button up to complete the double-click
+                    win32gui.PostMessage(self.hidden_window, up_msg, 0, lparam)
+                else:
+                    # Send button down
+                    win32gui.PostMessage(self.hidden_window, down_msg, 0, lparam)
+
+                    # Brief delay between down and up
+                    time.sleep(0.08)
+
+                    # Send button up
+                    win32gui.PostMessage(self.hidden_window, up_msg, 0, lparam)
+
+                    # For double click, repeat the sequence with appropriate timing
+                    if double_click:
+                        time.sleep(0.05)  # Brief delay between clicks
+
+                        # Send second click
+                        win32gui.PostMessage(self.hidden_window, down_msg, 0, lparam)
+                        time.sleep(0.08)
+                        win32gui.PostMessage(self.hidden_window, up_msg, 0, lparam)
+
+                self.event_count += 1
+                return True
+            except Exception as e:
+                self.logger.error(f"Error simulating mouse click: {e}")
+                return False
+        return False
+
+    def simulate_mouse_scroll(self, delta=120):
+        """
+        Simulate a mouse wheel scroll at the current position.
+
+        What does this method do?
+        -----------------------
+        This method simulates rotating the mouse wheel (scrolling) at the current
+        cursor position. It can simulate both scrolling up and scrolling down,
+        with configurable amounts of scrolling.
+
+        In most applications, scrolling up moves content upward (showing content
+        below), while scrolling down moves content downward (showing content above).
+
+        Args:
+            delta (int, optional): The amount and direction of scrolling:
+                                  - Positive values scroll up
+                                  - Negative values scroll down
+                                  - Larger absolute values scroll more
+                                  Defaults to 120 (scroll up one "notch").
+
+        Returns:
+            bool: True if the scroll was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Packs the current cursor position into a format Windows understands
+        2. Packs the scroll amount (delta) into the appropriate parameter
+        3. Sends a mouse wheel message to the hidden window
+        4. Increments the event counter
+        5. Returns whether the operation was successful
+        6. Catches and logs any errors that might occur
+        """
+        if self.hidden_window:
+            try:
+                # Pack coordinates into lparam
+                lparam = self.current_y << 16 | self.current_x
+
+                # Set mouseData to the scroll delta
+                mouseData = delta << 16
+
+                # Send mousewheel message
+                win32gui.PostMessage(self.hidden_window, WM_MOUSEWHEEL, mouseData, lparam)
+
+                self.event_count += 1
+                return True
+            except Exception as e:
+                self.logger.error(f"Error simulating mouse scroll: {e}")
+                return False
+        return False
+
+    def simulate_random_movement(self):
+        """
+        Simulate a random mouse movement.
+
+        What does this method do?
+        -----------------------
+        This method simulates moving the mouse cursor in a random direction and
+        distance from its current position. It's like a person moving the mouse
+        with no particular destination in mind - just moving it around randomly.
+
+        The method ensures that the movement:
+        - Is at least a minimum distance (to avoid tiny, imperceptible movements)
+        - Stays within the screen boundaries
+        - Is properly recorded in the log
+
+        Returns:
+            bool: True if the movement was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Generates random changes in X and Y coordinates
+        2. Ensures the movement meets the minimum distance requirement
+        3. Calculates the new position while ensuring it stays within screen bounds
+        4. Calls simulate_mouse_move to actually perform the movement
+        5. Logs the details of the movement
+        6. Returns whether the operation was successful
+        """
+        # Calculate random movement within bounds
+        delta_x = random.randint(-self.movement_max_distance, self.movement_max_distance)
+        delta_y = random.randint(-self.movement_max_distance, self.movement_max_distance)
+
+        # Ensure movement is at least minimum distance
+        distance = math.sqrt(delta_x**2 + delta_y**2)
+        if distance < self.movement_min_distance:
+            # Scale up to minimum distance
+            scale_factor = self.movement_min_distance / distance
+            delta_x = int(delta_x * scale_factor)
+            delta_y = int(delta_y * scale_factor)
+
+        # Calculate new position
+        new_x = max(0, min(self.screen_width - 1, self.current_x + delta_x))
+        new_y = max(0, min(self.screen_height - 1, self.current_y + delta_y))
+
+        # Simulate the movement
+        if self.simulate_mouse_move(new_x, new_y):
+            self.logger.info(f"Event {self.event_count}: Mouse moved randomly from "
+                           f"({self.current_x - delta_x}, {self.current_y - delta_y}) "
+                           f"to ({new_x}, {new_y})")
+            return True
+        return False
+
+    def simulate_linear_movement(self):
+        """
+        Simulate a linear mouse movement.
+
+        What does this method do?
+        -----------------------
+        This method simulates moving the mouse cursor in a straight line from the
+        current position to a randomly chosen end point. Instead of jumping directly
+        to the end point, it moves in small steps along the line, which looks more
+        like how a real person would move a mouse.
+
+        Think of it as drawing a straight line with the mouse cursor from one point
+        to another, with smooth movement between the points.
+
+        Returns:
+            bool: True if the movement was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Generates a random end point at some distance from the current position
+        2. Ensures the movement meets the minimum distance requirement
+        3. Calculates the end position while ensuring it stays within screen bounds
+        4. Determines how many steps to break the movement into
+        5. Stores the starting position for logging
+        6. For each step:
+           a. Calculates the position at this step along the line
+           b. Calls simulate_mouse_move to move to that position
+           c. Adds a small delay between steps for smooth movement
+           d. Processes any pending messages to keep the system responsive
+        7. Logs the details of the completed movement
+        8. Returns whether the operation was successful
+        """
+        # Determine random end point
+        delta_x = random.randint(-self.movement_max_distance, self.movement_max_distance)
+        delta_y = random.randint(-self.movement_max_distance, self.movement_max_distance)
+
+        # Ensure movement is at least minimum distance
+        distance = math.sqrt(delta_x**2 + delta_y**2)
+        if distance < self.movement_min_distance:
+            # Scale up to minimum distance
+            scale_factor = self.movement_min_distance / distance
+            delta_x = int(delta_x * scale_factor)
+            delta_y = int(delta_y * scale_factor)
+
+        # Calculate end position
+        end_x = max(0, min(self.screen_width - 1, self.current_x + delta_x))
+        end_y = max(0, min(self.screen_height - 1, self.current_y + delta_y))
+
+        # Determine number of steps for this linear movement
+        steps = random.randint(self.linear_min_steps, self.linear_max_steps)
+
+        # Store starting position for logging
+        start_x, start_y = self.current_x, self.current_y
+
+        # Move in steps
+        success = True
+        for step in range(1, steps + 1):
+            # Calculate position at this step
+            step_x = int(start_x + (end_x - start_x) * step / steps)
+            step_y = int(start_y + (end_y - start_y) * step / steps)
+
+            # Simulate the movement
+            if not self.simulate_mouse_move(step_x, step_y):
+                success = False
+                break
+
+            # Small delay between steps
+            time.sleep(0.01)
+
+            # Process messages periodically
+            self.check_and_process_messages()
+
+        if success:
+            self.logger.info(f"Event {self.event_count}: Mouse moved linearly from "
+                           f"({start_x}, {start_y}) to ({end_x}, {end_y}) in {steps} steps")
+            return True
+        return False
+
+    def simulate_circular_movement(self):
+        """
+        Simulate a circular mouse movement.
+
+        What does this method do?
+        -----------------------
+        This method simulates moving the mouse cursor in a circular pattern around
+        a central point. The cursor traces a complete circle with a random radius,
+        moving in small steps to create a smooth, continuous motion.
+
+        Think of it as drawing a circle with the mouse cursor, like someone moving
+        their mouse in a circular motion to highlight or emphasize something.
+
+        Returns:
+            bool: True if the movement was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Determines a random radius for the circle within configured limits
+        2. Determines how many steps to break the circle into
+        3. Ensures the circle stays within screen boundaries by adjusting the center
+        4. Stores the starting position for logging
+        5. For each step around the circle:
+           a. Calculates the position at this angle using sine and cosine
+           b. Ensures the position stays within screen bounds
+           c. Calls simulate_mouse_move to move to that position
+           d. Adds a small delay between steps for smooth movement
+           e. Processes any pending messages to keep the system responsive
+        6. Logs the details of the completed circular movement
+        7. Returns whether the operation was successful
+        """
+        # Determine circle parameters
+        radius = random.randint(self.circular_min_radius, self.circular_max_radius)
+        steps = random.randint(self.circular_min_steps, self.circular_max_steps)
+
+        # Ensure circle stays within screen bounds
+        center_x = max(radius, min(self.screen_width - radius, self.current_x))
+        center_y = max(radius, min(self.screen_height - radius, self.current_y))
+
+        # Store starting position for logging
+        start_x, start_y = self.current_x, self.current_y
+
+        # Move in a circle
+        success = True
+        for step in range(steps):
+            # Calculate position on circle
+            angle = 2 * math.pi * step / steps
+            x = int(center_x + radius * math.cos(angle))
+            y = int(center_y + radius * math.sin(angle))
+
+            # Ensure within screen bounds (should already be, but double-check)
+            x = max(0, min(self.screen_width - 1, x))
+            y = max(0, min(self.screen_height - 1, y))
+
+            # Simulate the movement
+            if not self.simulate_mouse_move(x, y):
+                success = False
+                break
+
+            # Small delay between steps
+            time.sleep(0.02)
+
+            # Process messages periodically
+            self.check_and_process_messages()
+
+        if success:
+            self.logger.info(f"Event {self.event_count}: Mouse moved in circular pattern "
+                           f"around ({center_x}, {center_y}) with radius {radius}")
+            return True
+        return False
+
+    def simulate_targeted_movement(self):
+        """
+        Simulate a mouse movement targeted at a specific location.
+
+        What does this method do?
+        -----------------------
+        This method simulates moving the mouse cursor to a specific target location
+        on the screen. Unlike random or simple linear movements, this method models
+        how humans typically move a mouse toward a specific target (like a button or icon):
+
+        - The movement follows a slight curve rather than a perfectly straight line
+        - The speed varies, starting slower, accelerating in the middle, then
+          slowing down as it approaches the target
+        - Targets are weighted, so some screen locations (like screen center or corners)
+          are more likely to be selected than others
+
+        This creates a very realistic simulation of goal-directed mouse movement.
+
+        Returns:
+            bool: True if the movement was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Selects a target position from the configured list, using weights
+           to make some positions more likely than others
+        2. Calculates the distance to the target
+        3. Determines how many steps to break the movement into, based on distance
+        4. Stores the starting position for logging
+        5. Adds a slight curve to the path by creating an offset midpoint
+        6. For each step along the path:
+           a. Calculates the position using a quadratic Bezier curve formula
+           b. Ensures the position stays within screen bounds
+           c. Calls simulate_mouse_move to move to that position
+           d. Varies the delay between steps to simulate acceleration/deceleration
+           e. Processes any pending messages to keep the system responsive
+        7. Logs the details of the completed movement
+        8. Returns whether the operation was successful
+        """
+        if not self.targeted_targets:
+            return self.simulate_random_movement()
+
+        # Select a target based on weights
+        targets = []
+        weights = []
+        for target in self.targeted_targets:
+            targets.append((
+                int(target["x_ratio"] * self.screen_width),
+                int(target["y_ratio"] * self.screen_height)
+            ))
+            weights.append(target.get("weight", 1))
+
+        target_x, target_y = random.choices(targets, weights=weights, k=1)[0]
+
+        # Calculate distance to target
+        distance = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
+
+        # Determine number of steps based on distance
+        steps = max(5, min(20, int(distance / 10)))
+
+        # Store starting position for logging
+        start_x, start_y = self.current_x, self.current_y
+
+        # Add slight curve to movement for realism
+        curve_offset = int(distance * 0.1)  # 10% of distance
+        midpoint_x = (start_x + target_x) / 2 + random.randint(-curve_offset, curve_offset)
+        midpoint_y = (start_y + target_y) / 2 + random.randint(-curve_offset, curve_offset)
+
+        # Move in steps with a slight curve
+        success = True
+        for step in range(1, steps + 1):
+            # Calculate t parameter (0 to 1)
+            t = step
+
+            def simulate_targeted_movement(self):
+        """
+        Simulate a mouse movement targeted at a specific location.
+
+        What does this method do?
+        -----------------------
+        This method simulates moving the mouse cursor to a specific target location
+        on the screen. Unlike random or simple linear movements, this method models
+        how humans typically move a mouse toward a specific target (like a button or icon):
+
+        - The movement follows a slight curve rather than a perfectly straight line
+        - The speed varies, starting slower, accelerating in the middle, then
+          slowing down as it approaches the target
+        - Targets are weighted, so some screen locations (like screen center or corners)
+          are more likely to be selected than others
+
+        This creates a very realistic simulation of goal-directed mouse movement.
+
+        Returns:
+            bool: True if the movement was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Selects a target position from the configured list, using weights
+           to make some positions more likely than others
+        2. Calculates the distance to the target
+        3. Determines how many steps to break the movement into, based on distance
+        4. Stores the starting position for logging
+        5. Adds a slight curve to the path by creating an offset midpoint
+        6. For each step along the path:
+           a. Calculates the position using a quadratic Bezier curve formula
+           b. Ensures the position stays within screen bounds
+           c. Calls simulate_mouse_move to move to that position
+           d. Varies the delay between steps to simulate acceleration/deceleration
+           e. Processes any pending messages to keep the system responsive
+        7. Logs the details of the completed movement
+        8. Returns whether the operation was successful
+        """
+        if not self.targeted_targets:
+            return self.simulate_random_movement()
+
+        # Select a target based on weights
+        targets = []
+        weights = []
+        for target in self.targeted_targets:
+            targets.append((
+                int(target["x_ratio"] * self.screen_width),
+                int(target["y_ratio"] * self.screen_height)
+            ))
+            weights.append(target.get("weight", 1))
+
+        target_x, target_y = random.choices(targets, weights=weights, k=1)[0]
+
+        # Calculate distance to target
+        distance = math.sqrt((target_x - self.current_x)**2 + (target_y - self.current_y)**2)
+
+        # Determine number of steps based on distance
+        steps = max(5, min(20, int(distance / 10)))
+
+        # Store starting position for logging
+        start_x, start_y = self.current_x, self.current_y
+
+        # Add slight curve to movement for realism
+        curve_offset = int(distance * 0.1)  # 10% of distance
+        midpoint_x = (start_x + target_x) / 2 + random.randint(-curve_offset, curve_offset)
+        midpoint_y = (start_y + target_y) / 2 + random.randint(-curve_offset, curve_offset)
+
+        # Move in steps with a slight curve
+        success = True
+        for step in range(1, steps + 1):
+            # Calculate t parameter (0 to 1)
+            t = step / steps
+
+            # Quadratic Bezier curve formula
+            x = int((1-t)**2 * start_x + 2*(1-t)*t * midpoint_x + t**2 * target_x)
+            y = int((1-t)**2 * start_y + 2*(1-t)*t * midpoint_y + t**2 * target_y)
+
+            # Ensure within screen bounds
+            x = max(0, min(self.screen_width - 1, x))
+            y = max(0, min(self.screen_height - 1, y))
+
+            # Simulate the movement
+            if not self.simulate_mouse_move(x, y):
+                success = False
+                break
+
+            # Varying delay to simulate human acceleration/deceleration
+            delay = 0.02
+            if step < steps * 0.2 or step > steps * 0.8:
+                delay = 0.03  # Slower at start and end
+            time.sleep(delay)
+
+            # Process messages periodically
+            self.check_and_process_messages()
+
+        if success:
+            self.logger.info(f"Event {self.event_count}: Mouse moved to target "
+                           f"from ({start_x}, {start_y}) to ({target_x}, {target_y})")
+            return True
+        return False
+
+    def simulate_movement_pattern(self):
+        """
+        Select and simulate a mouse movement pattern based on weighted probabilities.
+
+        What does this method do?
+        -----------------------
+        This method chooses which type of mouse movement to simulate (random,
+        linear, circular, or targeted) and then executes that pattern. It selects
+        patterns based on their assigned weights, so some patterns can be made
+        more common than others.
+
+        It's like a traffic controller that decides what kind of mouse movement
+        to simulate next - maybe a random movement, maybe a straight line to a
+        new position, maybe a circle, or maybe a movement toward a specific target.
+
+        This variety of movement patterns makes the overall mouse behavior more
+        realistic, as real humans don't just move their mouse in one way all the time.
+
+        Returns:
+            bool: True if the pattern was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Uses weighted random selection to choose a movement pattern based on
+           the configured weights (so some patterns can be more common than others)
+        2. Based on the selected pattern, calls the appropriate method to simulate it
+        3. Falls back to random movement if the selected pattern isn't recognized
+        4. Returns whether the simulation was successful
+        """
+        # Select a movement pattern
+        self.current_movement_pattern = random.choices(
+            self.movement_patterns,
+            weights=self.movement_pattern_weights[:len(self.movement_patterns)],
+            k=1
+        )[0]
+
+        # Execute the selected pattern
+        if self.current_movement_pattern == "random":
+            return self.simulate_random_movement()
+        elif self.current_movement_pattern == "linear":
+            return self.simulate_linear_movement()
+        elif self.current_movement_pattern == "circular":
+            return self.simulate_circular_movement()
+        elif self.current_movement_pattern == "targeted":
+            return self.simulate_targeted_movement()
+        else:
+            # Fall back to random movement if pattern not recognized
+            return self.simulate_random_movement()
+
+    def simulate_input_event(self):
+        """
+        Simulate a mouse input event.
+
+        What does this method do?
+        -----------------------
+        This method is the main "decision maker" for what type of mouse event
+        to simulate next. It randomly chooses between:
+        - Moving the mouse (using one of the movement patterns)
+        - Clicking a mouse button (left, right, or middle, possibly double-clicking)
+        - Scrolling the mouse wheel (up or down)
+
+        The choice is weighted based on configuration settings, with movement
+        typically having the highest probability, followed by clicking, and
+        then scrolling.
+
+        This method overrides the abstract method from the BaseInputTester class,
+        providing the mouse-specific implementation.
+
+        Returns:
+            bool: True if the event was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Generates a random number to decide what type of event to simulate
+        2. Based on the configured probabilities:
+           a. Most of the time, simulates a movement pattern
+           b. Sometimes simulates a mouse click (with button type based on weights)
+           c. Occasionally simulates scrolling (with random direction and amount)
+        3. Logs the details of the event
+        4. Returns whether the simulation was successful
+        """
+        # Decide what type of event to generate
+        random_value = random.random()
+
+        # Move the mouse (highest probability)
+        if random_value >= (self.click_probability + self.scroll_probability):
+            return self.simulate_movement_pattern()
+
+        # Generate a mouse click
+        elif random_value < self.click_probability:
+            # Choose random button type based on weights
+            button_type = random.choices(
+                self.button_types,
+                weights=self.button_weights[:len(self.button_types)],
+                k=1
+            )[0]
+
+            # Decide if this is a double-click
+            double_click = random.random() < self.double_click_probability and button_type == "left"
+
+            # Simulate the click
+            if self.simulate_mouse_click(button_type, double_click):
+                click_type = "double-click" if double_click else "click"
+                self.logger.info(f"Event {self.event_count}: {button_type.capitalize()} {click_type} at "
+                               f"({self.current_x}, {self.current_y})")
+                return True
+
+        # Generate a mouse scroll
+        else:
+            # Random scroll amount (positive for up, negative for down)
+            scroll_direction = 1 if random.random() > 0.5 else -1
+            scroll_amount = random.randint(1, 3) * 120 * scroll_direction
+
+            # Simulate the scroll
+            if self.simulate_mouse_scroll(scroll_amount):
+                direction = "up" if scroll_amount > 0 else "down"
+                self.logger.info(f"Event {self.event_count}: Mouse scrolled {direction} at "
+                               f"({self.current_x}, {self.current_y})")
+                return True
+
+        return False
+
+    def cleanup_window(self):
+        """
+        Perform periodic cleanup by destroying and recreating the window.
+
+        What does this method do?
+        -----------------------
+        This method refreshes the test window by destroying the old one and creating
+        a new one. It overrides the method from the BaseInputTester class to handle
+        the mouse-specific window attributes.
+
+        Regular cleanup helps prevent resource leaks and keeps the testing environment
+        stable during long test runs.
+
+        How it works:
+        -----------
+        1. Logs that cleanup is starting
+        2. Destroys the current hidden window if it exists
+        3. Sets both window handles to None
+        4. Waits briefly to ensure cleanup is complete
+        5. Creates a new hidden window
+        6. Updates the timestamp of when cleanup last occurred
+        7. Logs that cleanup is complete
+        """
+        self.logger.info("Performing window cleanup...")
+        if self.hidden_window:
+            win32gui.DestroyWindow(self.hidden_window)
+            self.hidden_window = None
+            self.test_window = None
+
+        # Short delay to ensure cleanup completes
+        time.sleep(0.5)
+
+        # Create a new window
+        self.create_test_window()
+        self.last_cleanup_time = time.time()
+        self.logger.info("Window cleanup completed")
+
+
+if __name__ == "__main__":
+    """
+    Main entry point for the SafeMouseTester script.
+
+    What does this section do?
+    ------------------------
+    This section runs when the script is executed directly (as opposed to being
+    imported as a module in another script). It:
+
+    1. Processes any command-line arguments
+    2. Creates an instance of SafeMouseTester
+    3. Starts the testing process
+    4. Handles any exceptions that occur during testing
+
+    Command-line arguments can be used to override the default time intervals
+    between simulated events, allowing quick adjustment of testing speed without
+    modifying the configuration file.
+
+    How it works:
+    -----------
+    1. Imports the sys module for accessing command-line arguments
+    2. Tries to parse min and max interval values from command-line arguments
+    3. Finds the configuration file in the same directory as the script
+    4. Creates a SafeMouseTester instance with the configuration
+    5. Starts the testing process, passing any custom intervals
+    6. Catches and logs any exceptions that occur
+
+    To use this script from the command line:
+    python smt-1.4.py [min_interval] [max_interval]
+
+    For example:
+    python smt-1.4.py 0.5 2.0
+
+    This would run the tester with events occurring every 0.5 to 2.0 seconds.
+    """
+    import sys
+
+    # Parse command line arguments for min/max intervals (optional)
+    min_interval = None
+    max_interval = None
+
+    if len(sys.argv) > 1:
+        try:
+            min_interval = float(sys.argv[1])
+            if len(sys.argv) > 2:
+                max_interval = float(sys.argv[2])
+        except ValueError:
+            print("Invalid interval argument. Using config file values.")
+
+    # Find config file in the same directory as the script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "smt.config")
+
+    # Create tester instance
+    tester = SafeMouseTester(config_path if os.path.exists(config_path) else None)
+
+    try:
+        tester.start_testing(min_interval, max_interval)
+    except Exception as e:
+        logging.error(f"\nAn error occurred: {e}")
+        raise

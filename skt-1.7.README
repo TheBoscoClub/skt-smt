@@ -1,0 +1,1032 @@
+```python
+# skt-1.4.py
+import win32api
+import win32gui
+import win32con
+import random
+import time
+import string
+import os
+import math
+from ctypes import (
+    windll,
+    Structure,
+    c_long,
+    POINTER,
+)
+from base_input_tester import BaseInputTester
+
+"""
+SafeKeyboardTester v1.4 - An advanced utility for testing keyboard input in an isolated environment.
+
+What does this program do?
+-------------------------
+This program creates a special invisible window that can simulate keyboard typing,
+much like a virtual person typing on your keyboard. The difference is that it doesn't
+actually affect other programs running on your computer - it's "isolated."
+
+It can generate all kinds of typing patterns that look remarkably human-like:
+- Common words from English
+- Random sequences of letters
+- Complete sentences with proper capitalization and punctuation
+- Programming code snippets
+- Number sequences
+
+It even simulates realistic human typing behaviors:
+- Occasional typos (pressing the wrong key)
+- Correcting typos with backspace
+- Varying speeds of typing (sometimes fast, sometimes slow)
+- Special key presses like Enter, Tab, or Shift
+
+Imagine having a robot that can type realistically without interfering with your
+other programs! That's what this program does.
+
+For new Python programmers:
+--------------------------
+This file builds on the BaseInputTester class we saw earlier. It's like taking that
+blueprint for a generic vehicle and adding all the special features needed to make
+it specifically into a car.
+
+The BaseInputTester gave us the basic framework, and now we're adding all the
+keyboard-specific features to create a complete keyboard testing tool.
+"""
+
+# Windows message constants for keyboard events
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_CHAR = 0x0102
+
+"""
+What are these constants?
+-----------------------
+These are special codes used by Windows to indicate different types of keyboard events:
+
+WM_KEYDOWN - Sent when a key is pressed down
+WM_KEYUP - Sent when a key is released
+WM_CHAR - Sent when a key press results in a character
+
+These codes help Windows and programs understand what kind of keyboard event occurred.
+Think of them like different types of doorbells that make different sounds so you
+know which door someone is at.
+"""
+
+# Initialize virtual key code mapping at module level for efficiency
+VK_CODES = {char: win32api.VkKeyScan(char) & 0xFF for char in string.ascii_lowercase + string.ascii_uppercase + string.digits}
+
+"""
+What is VK_CODES?
+---------------
+This creates a lookup table (dictionary) that maps characters (like 'a', 'B', '7')
+to their corresponding "virtual key codes" - special numbers that Windows uses to
+identify different keys on the keyboard.
+
+It's like having a translation dictionary that converts between human-readable
+letters and the numeric codes that Windows understands.
+
+For example, the letter 'a' might be represented by the code 65 in Windows.
+This table lets us quickly find the code for any letter or number.
+"""
+
+# Special keys mapping
+SPECIAL_KEYS = {
+    "space": win32con.VK_SPACE,
+    "enter": win32con.VK_RETURN,
+    "backspace": win32con.VK_BACK,
+    "tab": win32con.VK_TAB,
+    "shift": win32con.VK_SHIFT,
+    "ctrl": win32con.VK_CONTROL,
+    "alt": win32con.VK_MENU,
+    "capslock": win32con.VK_CAPITAL,
+    "escape": win32con.VK_ESCAPE,
+}
+
+"""
+What is SPECIAL_KEYS?
+-------------------
+This is another lookup table, but specifically for special keys that aren't
+regular letters or numbers - like the Space bar, Enter key, or Backspace.
+
+It works similar to the VK_CODES table above, but it focuses on these special
+keys that have specific functions rather than typing characters.
+
+For example, when we say "space" in our code, this table helps translate that
+to the specific code that Windows uses for the Space bar.
+"""
+
+class KBDLLHOOKSTRUCT(Structure):
+    """
+    Structure that contains information about a low-level keyboard input event.
+
+    What is this structure?
+    ---------------------
+    This defines a special container for information about keyboard events.
+    When Windows detects keyboard activity, it gathers several pieces of
+    information: which key was pressed, when it happened, any special flags, etc.
+
+    This structure gives us a way to organize and access all that information.
+    It's like having a form with specific fields for recording everything about
+    a keyboard event.
+
+    For new Python programmers:
+    --------------------------
+    A "Structure" in this context is a way to organize related data. It's similar
+    to a class, but more focused on simply grouping data fields together rather
+    than combining data with behaviors.
+
+    The "_fields_" list defines what information this structure will contain.
+
+    Attributes:
+        vkCode (c_long): Virtual-key code of the key (which key was pressed).
+        scanCode (c_long): Hardware scan code for the key (a lower-level code).
+        flags (c_long): Special indicators about the keystroke (like whether it's repeated).
+        time (c_long): When this event happened (in milliseconds).
+        dwExtraInfo (POINTER(c_long)): Any additional information about the event.
+    """
+    _fields_ = [
+        ("vkCode", c_long),
+        ("scanCode", c_long),
+        ("flags", c_long),
+        ("time", c_long),
+        ("dwExtraInfo", POINTER(c_long)),
+    ]
+
+
+class SafeKeyboardTester(BaseInputTester):
+    """
+    An advanced class for testing keyboard input in an isolated environment.
+
+    What does this class do?
+    ----------------------
+    This class creates a special system for simulating keyboard input. It can
+    generate typing patterns that closely mimic how humans actually type,
+    including all the little variations and imperfections of real typing.
+
+    The key feature is that it does this in an "isolated" way - meaning it doesn't
+    actually interfere with other programs running on your computer. The simulated
+    typing only affects a special invisible window created just for testing.
+
+    Some of the cool things it can simulate:
+    - Different typing speeds and rhythms
+    - Common words and phrases
+    - Typos and corrections
+    - Special key combinations
+    - Various typing patterns like sentences, code, or random text
+
+    For new Python programmers:
+    --------------------------
+    This class "inherits from" (builds upon) the BaseInputTester class. This means
+    it gets all the general features of BaseInputTester, plus it adds its own
+    keyboard-specific capabilities.
+
+    Imagine if BaseInputTester is a general blueprint for a vehicle, then
+    SafeKeyboardTester adds all the specific features needed to make it into a car.
+
+    Attributes:
+        letters (list): A list containing all lowercase letters of the alphabet.
+        special_keys (dict): A lookup table mapping special key names to their codes.
+        current_typing_pattern (str): Which typing pattern is currently being used.
+        typing_pattern_weights (list): How likely each typing pattern is to be selected.
+    """
+
+    def __init__(self, config_file="skt.config"):
+        """
+        Initialize the SafeKeyboardTester with parameters from config file.
+
+        What does this method do?
+        -----------------------
+        This method sets up a new SafeKeyboardTester with all the necessary
+        starting values. It loads configuration settings from a file, initializes
+        variables, and prepares everything needed for keyboard testing.
+
+        It's like getting a new car ready - filling the tank, adjusting the seats,
+        setting the radio stations, and so on.
+
+        Args:
+            config_file (str, optional): Path to the configuration file. If not
+                                        provided, it will look for a file named
+                                        "skt.config" in the same directory.
+                                        Defaults to "skt.config".
+
+        How it works:
+        -----------
+        1. Calls the parent class's initialization (BaseInputTester)
+        2. Sets up window handles
+        3. Initializes character sets for typing
+        4. Sets up typing patterns and loads common words
+        5. Caches frequently used configuration values for better performance
+        """
+        super().__init__(config_file)
+
+        # Initialize window handles to None
+        self.transparent_window = None
+        self.test_window = None
+
+        # Define character sets
+        self.letters = list(string.ascii_lowercase)
+        self.special_keys = SPECIAL_KEYS
+
+        # Typing patterns
+        self.typing_patterns = self.config.get("typing_patterns", ["common_word", "random_word"])
+        self.typing_pattern_weights = [1.0] * len(self.typing_patterns)  # Equal weights by default
+        self.current_typing_pattern = None
+
+        # Common words list
+        self.common_words = self.config.get("common_words", ["the", "and", "to"])
+
+        # Cache frequently used config values
+        self.key_interval_min = self.config.get("key_interval_min", 0.1)
+        self.key_interval_max = self.config.get("key_interval_max", 0.3)
+        self.word_length_min = self.config.get("word_length_min", 3)
+        self.word_length_max = self.config.get("word_length_max", 8)
+        self.typo_probability = self.config.get("typo_probability", 0.05)
+        self.correction_probability = self.config.get("correction_probability", 0.8)
+        self.capitalization_probability = self.config.get("capitalization_probability", 0.2)
+        self.common_words_probability = self.config.get("common_words_probability", 0.7)
+        self.special_key_probability = self.config.get("special_key_probability", 0.05)
+        self.space_after_word_probability = self.config.get("space_after_word_probability", 0.9)
+
+    def create_test_window(self):
+        """
+        Create a transparent overlay window that covers the entire screen.
+
+        What does this method do?
+        -----------------------
+        This method creates a special window that's completely invisible to the user
+        but can receive keyboard input. It's like having a layer of clear glass
+        over your screen that can detect key presses without affecting what you see.
+
+        This window is:
+        - Transparent (you can't see it)
+        - Click-through (mouse clicks pass through it to programs underneath)
+        - Always on top (it stays above other windows)
+        - Responsive to input events (it can receive keyboard events)
+
+        The window is made very small (1x1 pixel) since it doesn't need to be
+        visible, but it still serves its purpose of capturing input events.
+
+        How it works:
+        -----------
+        1. Makes the process DPI-aware (ensures proper display scaling)
+        2. Registers a window class (a template for the window)
+        3. Creates the actual window with special properties
+        4. Makes the window transparent
+        5. Stores the window handle for later use
+        6. Logs the creation of the window
+        """
+        windll.user32.SetProcessDPIAware()
+
+        # Register window class
+        wc = win32gui.WNDCLASS()
+        wc.lpfnWndProc = self.window_proc
+        wc.lpszClassName = "IsolatedKeyboardTester"
+        wc.hInstance = win32api.GetModuleHandle(None)
+
+        try:
+            win32gui.RegisterClass(wc)
+        except Exception:
+            # Class might already be registered, which is fine
+            pass
+
+        # Create transparent window
+        self.transparent_window = win32gui.CreateWindowEx(
+            win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOPMOST,
+            wc.lpszClassName,
+            "Isolated Keyboard Test",
+            win32con.WS_POPUP,  # Removed WS_VISIBLE flag
+            0,
+            0,
+            1,
+            1,  # 1x1 pixel since it's hidden
+            0,
+            0,
+            wc.hInstance,
+            None,
+        )
+
+        # Make window transparent
+        win32gui.SetLayeredWindowAttributes(
+            self.transparent_window, 0, 1, win32con.LWA_ALPHA
+        )
+
+        # Store window handle in both attributes for compatibility
+        self.test_window = self.transparent_window
+
+        self.logger.info(f"Created new transparent window with handle: {self.transparent_window}")
+
+    def simulate_keypress(self, vk_code, char=None):
+        """
+        Simulate a keypress in the isolated window.
+
+        What does this method do?
+        -----------------------
+        This method simulates pressing and releasing a key. It sends messages to our
+        transparent window that mimic what happens when you physically press a key
+        on your keyboard.
+
+        A complete keypress involves:
+        1. Pressing the key down
+        2. Generating a character (for printable keys)
+        3. Releasing the key
+
+        This method simulates all three parts with realistic timing between them.
+
+        Args:
+            vk_code (int): Virtual key code of the key to simulate (a numeric
+                          code that identifies which key to press).
+            char (str, optional): Character to send with the WM_CHAR message.
+                                 Only needed for keys that produce printable
+                                 characters. Defaults to None.
+
+        Returns:
+            bool: True if the keypress was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Sends a key-down message to the window
+        2. If a character was provided, sends a character message
+        3. Waits briefly (simulating how long a human holds down a key)
+        4. Sends a key-up message to the window
+        5. Increments the event counter
+        6. Returns True if successful, False if an error occurred
+        """
+        if self.transparent_window:
+            try:
+                # Send key down
+                win32gui.PostMessage(self.transparent_window, WM_KEYDOWN, vk_code, 0)
+
+                # Send character if provided
+                if char:
+                    win32gui.PostMessage(self.transparent_window, WM_CHAR, ord(char), 0)
+
+                # Slight delay between down and up events
+                time.sleep(0.08)
+
+                # Send key up
+                win32gui.PostMessage(self.transparent_window, WM_KEYUP, vk_code, 0)
+
+                self.event_count += 1
+                return True
+
+            except Exception as e:
+                self.logger.error(f"Error simulating keypress: {e}")
+                return False
+        return False
+
+    def get_adjacent_keys(self, char):
+        """
+        Get adjacent keys on a QWERTY keyboard for a given character.
+
+        What does this method do?
+        -----------------------
+        This method finds which keys are physically next to a given key on a standard
+        QWERTY keyboard. This is used to create realistic typos - when humans make
+        typing mistakes, they often hit a key that's adjacent to the intended key.
+
+        For example, if you wanted to type 'a', you might accidentally hit 'q', 's',
+        'z', or 'w' since these keys are right next to 'a' on a keyboard.
+
+        Args:
+            char (str): The character to find adjacent keys for.
+
+        Returns:
+            list: A list of characters that are adjacent to the input character
+                 on a standard QWERTY keyboard.
+
+        How it works:
+        -----------
+        1. Defines a model of a QWERTY keyboard layout as a 2D array
+        2. Converts the input character to lowercase for easier matching
+        3. Searches for the character's position in the keyboard layout
+        4. If found, collects all characters in the 8 surrounding positions
+        5. Returns the list of adjacent characters
+        6. If not found, returns all letters as a fallback
+        """
+        keyboard_layout = [
+            ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='],
+            ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'],
+            ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\''],
+            ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/']
+        ]
+
+        # Convert to lowercase for searching
+        char = char.lower()
+
+        # Find position of character in keyboard layout
+        row_idx, col_idx = -1, -1
+        for i, row in enumerate(keyboard_layout):
+            if char in row:
+                row_idx = i
+                col_idx = row.index(char)
+                break
+
+        if row_idx == -1:
+            return self.letters  # Character not found, return all letters
+
+        # Get adjacent keys
+        adjacent = []
+        for i in range(max(0, row_idx - 1), min(len(keyboard_layout), row_idx + 2)):
+            for j in range(max(0, col_idx - 1), min(len(keyboard_layout[i]), col_idx + 2)):
+                if not (i == row_idx and j == col_idx):  # Skip the original character
+                    adjacent.append(keyboard_layout[i][j])
+
+        return adjacent if adjacent else self.letters
+
+    def generate_typo(self, char):
+        """
+        Generate a realistic typo for a given character.
+
+        What does this method do?
+        -----------------------
+        This method creates a realistic typing mistake for a given character.
+        Instead of just selecting a random character, it specifically chooses
+        a character that's physically close to the intended one on a keyboard,
+        making the typo much more realistic.
+
+        It's like simulating how a real person might slip and hit a neighboring
+        key by accident.
+
+        Args:
+            char (str): The intended character the user was trying to type.
+
+        Returns:
+            str: A character representing a realistic typo - typically a key
+                adjacent to the intended one on a QWERTY keyboard.
+
+        How it works:
+        -----------
+        1. Gets the list of keys adjacent to the target character
+        2. Randomly selects one of these adjacent keys
+        3. If no adjacent keys are found, falls back to a random letter
+        """
+        adjacent_keys = self.get_adjacent_keys(char)
+        if adjacent_keys:
+            return random.choice(adjacent_keys)
+        return random.choice(self.letters)
+
+    def simulate_typing_pattern(self):
+        """
+        Select and simulate a typing pattern based on weighted probabilities.
+
+        What does this method do?
+        -----------------------
+        This method chooses a type of typing pattern to simulate (like common
+        words, random words, sentences, etc.) and then executes that pattern.
+        It selects patterns based on their assigned weights, so some patterns
+        can be made more common than others.
+
+        It's like a traffic controller that decides what kind of typing behavior
+        to simulate next - maybe a sentence, maybe just a single word, maybe
+        some code.
+
+        Returns:
+            bool: True if the pattern was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Uses weighted random selection to choose a typing pattern
+        2. Based on the selected pattern, calls the appropriate method to simulate it
+        3. Falls back to simulating a random word if the selected pattern isn't recognized
+        """
+        # Select a typing pattern
+        self.current_typing_pattern = random.choices(
+            self.typing_patterns,
+            weights=self.typing_pattern_weights,
+            k=1
+        )[0]
+
+        # Execute the selected pattern
+        if self.current_typing_pattern == "common_word":
+            return self.simulate_common_word()
+        elif self.current_typing_pattern == "random_word":
+            return self.simulate_random_word()
+        elif self.current_typing_pattern == "sentence":
+            return self.simulate_sentence()
+        elif self.current_typing_pattern == "code_snippet":
+            return self.simulate_code_snippet()
+        elif self.current_typing_pattern == "number_sequence":
+            return self.simulate_number_sequence()
+        else:
+            # Fall back to random word if pattern not recognized
+            return self.simulate_random_word()
+
+    def simulate_common_word(self):
+        """
+        Simulate typing a common English word.
+
+        What does this method do?
+        -----------------------
+        This method simulates typing a word selected from a list of common
+        English words, with realistic timing and occasional typos.
+
+        It's like having a virtual person who mostly types correctly but
+        occasionally makes mistakes and corrects them, just like a real human.
+
+        The simulation includes:
+        - Sometimes capitalizing the first letter
+        - Occasionally making typos (pressing wrong keys)
+        - Usually (but not always) correcting those typos
+        - Adding spaces after words most of the time
+        - Varying the speed of typing between characters
+
+        Returns:
+            bool: True if the word was typed successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Selects a random word from the common words list
+        2. Sometimes capitalizes it based on configured probability
+        3. For each character in the word:
+           a. Decides whether to simulate a typo based on configured probability
+           b. If simulating a typo, generates and types a realistic error
+           c. After a typo, may correct it by simulating backspace + correct char
+           d. If not making a typo, simply types the correct character
+           e. Varies the delay between keystrokes for realistic timing
+        4. May add a space after the word based on configured probability
+        5. Logs the full word that was typed, including any uncorrected typos
+        """
+        if not self.common_words:
+            return self.simulate_random_word()
+
+        word = random.choice(self.common_words)
+        typed_chars = []
+
+        # Apply capitalization sometimes
+        if random.random() < self.capitalization_probability:
+            word = word.capitalize()
+
+        for i, char in enumerate(word):
+            # Decide if we make a typo
+            if random.random() < self.typo_probability:
+                typo = self.generate_typo(char)
+                vk_code = VK_CODES.get(typo, VK_CODES.get(typo.lower(), 0))
+
+                if vk_code and self.simulate_keypress(vk_code, typo):
+                    typed_chars.append(typo)
+                    char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                    time.sleep(char_delay)
+
+                    # Decide if we correct the typo
+                    if random.random() < self.correction_probability:
+                        # Press backspace
+                        if self.simulate_keypress(win32con.VK_BACK):
+                            typed_chars.pop()  # Remove the typo
+                            char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                            time.sleep(char_delay)
+
+                            # Type the correct character
+                            vk_code = VK_CODES.get(char, VK_CODES.get(char.lower(), 0))
+                            if vk_code and self.simulate_keypress(vk_code, char):
+                                typed_chars.append(char)
+            else:
+                # Type the correct character
+                vk_code = VK_CODES.get(char, VK_CODES.get(char.lower(), 0))
+
+                if vk_code and self.simulate_keypress(vk_code, char):
+                    typed_chars.append(char)
+                    char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                    time.sleep(char_delay)
+
+            # Process messages periodically during typing to prevent queue buildup
+            self.check_and_process_messages()
+
+        # Add space after word (with configured probability)
+        if random.random() < self.space_after_word_probability:
+            if self.simulate_keypress(win32con.VK_SPACE, " "):
+                typed_chars.append(" ")
+
+        self.logger.info(f"Burst {self.event_count}: Simulated common word '{''.join(typed_chars)}'")
+        return True
+
+    def simulate_random_word(self):
+        """
+        Simulate typing a random word.
+
+        What does this method do?
+        -----------------------
+        This method simulates typing a completely random word made up of a random
+        sequence of letters. Like the common word method, it includes realistic
+        typing behaviors like typos, corrections, and varied timing.
+
+        The difference is that instead of selecting from a list of real words,
+        this method generates a completely random sequence of characters.
+
+        Returns:
+            bool: True if the word was typed successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Determines a random length for the word between configured min and max
+        2. For each position in the word:
+           a. Selects a random letter
+           b. Decides whether to simulate a typo based on configured probability
+           c. If simulating a typo, generates and types a realistic error
+           d. After a typo, may correct it by simulating backspace + correct char
+           e. If not making a typo, simply types the correct character
+           f. Varies the delay between keystrokes for realistic timing
+        3. May add a space after the word based on configured probability
+        4. Logs the full word that was typed, including any uncorrected typos
+        """
+        word_length = random.randint(self.word_length_min, self.word_length_max)
+        typed_chars = []
+
+        for _ in range(word_length):
+            char = random.choice(self.letters)
+
+            # Decide if we make a typo
+            if random.random() < self.typo_probability:
+                typo = self.generate_typo(char)
+                vk_code = VK_CODES.get(typo, 0)
+
+                if vk_code and self.simulate_keypress(vk_code, typo):
+                    typed_chars.append(typo)
+                    char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                    time.sleep(char_delay)
+
+                    # Decide if we correct the typo
+                    if random.random() < self.correction_probability:
+                        # Press backspace
+                        if self.simulate_keypress(win32con.VK_BACK):
+                            typed_chars.pop()  # Remove the typo
+                            char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                            time.sleep(char_delay)
+
+                            # Type the correct character
+                            vk_code = VK_CODES.get(char, 0)
+                            if vk_code and self.simulate_keypress(vk_code, char):
+                                typed_chars.append(char)
+            else:
+                # Type the correct character
+                vk_code = VK_CODES.get(char, 0)
+
+                if vk_code and self.simulate_keypress(vk_code, char):
+                    typed_chars.append(char)
+                    char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                    time.sleep(char_delay)
+
+            # Process messages periodically during typing to prevent queue buildup
+            self.check_and_process_messages()
+
+        # Add space after word (with configured probability)
+        if random.random() < self.space_after_word_probability:
+            if self.simulate_keypress(win32con.VK_SPACE, " "):
+                typed_chars.append(" ")
+
+        self.logger.info(f"Burst {self.event_count}: Simulated random word '{''.join(typed_chars)}'")
+        return True
+
+    def simulate_sentence(self):
+        """
+        Simulate typing a sentence composed of multiple words.
+
+        What does this method do?
+        -----------------------
+        This method simulates typing a complete sentence, including proper
+        capitalization of the first word and ending punctuation. The sentence
+        is made up of a mix of common and random words.
+
+        It's like having a virtual person type out a full thought, with all
+        the natural elements of sentence structure.
+
+        Returns:
+            bool: True if the sentence was typed successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Determines a random length for the sentence (number of words)
+        2. First word is always capitalized
+        3. Types the first word character by character
+        4. Types a space after the first word
+        5. For each subsequent word:
+           a. Decides whether to use a common word or generate a random one
+           b. Types the word character by character
+           c. Adds spaces between words (but not after the last word)
+        6. Ends the sentence with random punctuation (period, exclamation, or question mark)
+        7. Logs the full sentence that was typed
+        """
+        sentence_length = random.randint(3, 8)  # Number of words in the sentence
+        typed_chars = []
+
+        # First word is capitalized
+        if random.random() < self.common_words_probability and self.common_words:
+            word = random.choice(self.common_words).capitalize()
+        else:
+            word = random.choice(self.letters).upper() + ''.join(random.choice(self.letters) for _ in range(random.randint(2, 7)))
+
+        # Type the first word
+        for char in word:
+            vk_code = VK_CODES.get(char, VK_CODES.get(char.lower(), 0))
+            if vk_code and self.simulate_keypress(vk_code, char):
+                typed_chars.append(char)
+                char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                time.sleep(char_delay)
+
+        # Type space after first word
+        if self.simulate_keypress(win32con.VK_SPACE, " "):
+            typed_chars.append(" ")
+
+        # Type the rest of the words
+        for i in range(1, sentence_length):
+            # Process messages periodically
+            self.check_and_process_messages()
+
+            # Select common or random word
+            if random.random() < self.common_words_probability and self.common_words:
+                word = random.choice(self.common_words)
+            else:
+                word = ''.join(random.choice(self.letters) for _ in range(random.randint(2, 7)))
+
+            # Type the word
+            for char in word:
+                vk_code = VK_CODES.get(char, 0)
+                if vk_code and self.simulate_keypress(vk_code, char):
+                    typed_chars.append(char)
+                    char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                    time.sleep(char_delay)
+
+            # Add space after word unless it's the last word
+            if i < sentence_length - 1:
+                if self.simulate_keypress(win32con.VK_SPACE, " "):
+                    typed_chars.append(" ")
+
+        # End the sentence with punctuation
+        punctuation = random.choice(['.', '!', '?'])
+        vk_code = win32api.VkKeyScan(punctuation) & 0xFF
+        if self.simulate_keypress(vk_code, punctuation):
+            typed_chars.append(punctuation)
+
+        self.logger.info(f"Burst {self.event_count}: Simulated sentence '{''.join(typed_chars)}'")
+        return True
+
+def simulate_code_snippet(self):
+        """
+        Simulate typing a simple code snippet.
+
+        What does this method do?
+        -----------------------
+        This method simulates typing a short piece of programming code, with
+        appropriate syntax and formatting. It selects from a variety of pre-defined
+        code patterns across different programming languages.
+
+        It handles special characters like brackets, parentheses, and indentation
+        that are common in programming code, making the simulation realistic for
+        coding scenarios.
+
+        Returns:
+            bool: True if the code snippet was typed successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Selects a code pattern from a predefined list of common programming constructs
+        2. For each character in the code:
+           a. Handles special characters like newlines and tabs appropriately
+           b. Simulates typing each character with realistic timing
+        3. Logs the complete code snippet that was typed
+        """
+        # Select a code pattern
+        code_patterns = [
+            "if(x>0){{return true;}}",
+            "for(int i=0;i<10;i++){{}}",
+            "function test(){{return null;}}",
+            "const x = [];",
+            "let result = a + b;",
+            "class Test{{constructor(){{}}}}",
+            "import os\nprint('hello')",
+            "def main():\n    return 0",
+            "while(true){{break;}}"
+        ]
+
+        code = random.choice(code_patterns)
+        typed_chars = []
+
+        for char in code:
+            # Handle special characters
+            if char == '\n':
+                vk_code = win32con.VK_RETURN
+                if self.simulate_keypress(vk_code):
+                    typed_chars.append('\n')
+            elif char == '\t' or (char == ' ' and typed_chars and typed_chars[-1] == '\n'):
+                vk_code = win32con.VK_TAB
+                if self.simulate_keypress(vk_code):
+                    typed_chars.append('    ')  # Represent tab as 4 spaces
+            else:
+                vk_code = win32api.VkKeyScan(char) & 0xFF
+                if vk_code != -1 and self.simulate_keypress(vk_code, char):
+                    typed_chars.append(char)
+
+            char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+            time.sleep(char_delay)
+
+            # Process messages periodically
+            self.check_and_process_messages()
+
+        self.logger.info(f"Burst {self.event_count}: Simulated code snippet '{''.join(typed_chars)}'")
+        return True
+
+    def simulate_number_sequence(self):
+        """
+        Simulate typing a sequence of numbers.
+
+        What does this method do?
+        -----------------------
+        This method simulates typing a sequence of random digits. This could represent
+        typing a phone number, ID number, zip code, or any other numeric data.
+
+        Unlike typing letters, this specifically focuses on the number keys at the
+        top of the keyboard (or number pad), creating realistic numeric input.
+
+        Returns:
+            bool: True if the number sequence was typed successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Determines a random length for the number sequence (between 3 and 10 digits)
+        2. For each position in the sequence:
+           a. Selects a random digit from 0-9
+           b. Simulates typing that digit
+           c. Adds a random delay between keystrokes for realism
+        3. Processes messages periodically to keep the system responsive
+        4. Logs the complete number sequence that was typed
+        """
+        # Determine length of number sequence
+        length = random.randint(3, 10)
+        typed_chars = []
+
+        for _ in range(length):
+            digit = str(random.randint(0, 9))
+            vk_code = VK_CODES.get(digit, 0)
+
+            if vk_code and self.simulate_keypress(vk_code, digit):
+                typed_chars.append(digit)
+                char_delay = random.uniform(self.key_interval_min, self.key_interval_max)
+                time.sleep(char_delay)
+
+            # Process messages periodically
+            self.check_and_process_messages()
+
+        self.logger.info(f"Burst {self.event_count}: Simulated number sequence '{''.join(typed_chars)}'")
+        return True
+
+    def simulate_special_key(self):
+        """
+        Simulate pressing a special key.
+
+        What does this method do?
+        -----------------------
+        This method simulates pressing one of the special keys on a keyboard,
+        such as Enter, Tab, Backspace, Shift, Ctrl, Alt, or Escape.
+
+        These keys don't produce characters but instead have special functions
+        in most applications. Simulating them helps create a more complete and
+        realistic keyboard testing scenario.
+
+        Returns:
+            bool: True if the key press was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Randomly selects a special key from the predefined list
+        2. Gets the virtual key code for that special key
+        3. Simulates pressing the selected special key
+        4. Logs which special key was pressed
+        """
+        key_name = random.choice(list(self.special_keys.keys()))
+        vk_code = self.special_keys[key_name]
+
+        if self.simulate_keypress(vk_code):
+            self.logger.info(f"Burst {self.event_count}: Simulated special key '{key_name}'")
+            return True
+        return False
+
+    def simulate_input_event(self):
+        """
+        Simulate a keyboard input event.
+
+        What does this method do?
+        -----------------------
+        This method is the main "decision maker" for what type of keyboard event
+        to simulate next. It randomly chooses between:
+        - Typing a pattern (common word, random word, sentence, etc.)
+        - Pressing a special key (Enter, Tab, Backspace, etc.)
+
+        The choice is weighted based on configuration settings, with special keys
+        typically having a much lower probability than typing patterns.
+
+        This method overrides the abstract method from the BaseInputTester class,
+        providing the keyboard-specific implementation.
+
+        Returns:
+            bool: True if the event was simulated successfully, False otherwise.
+
+        How it works:
+        -----------
+        1. Generates a random number and compares it with the special key probability
+        2. If the random number is below the threshold, simulates a special key press
+        3. Otherwise, simulates a typing pattern
+        4. Returns whether the event was successfully simulated
+        """
+        if random.random() < self.special_key_probability:
+            # Simulate special key
+            return self.simulate_special_key()
+        else:
+            # Simulate typing pattern
+            return self.simulate_typing_pattern()
+
+    def cleanup_window(self):
+        """
+        Perform periodic cleanup by destroying and recreating the window.
+
+        What does this method do?
+        -----------------------
+        This method refreshes the test window by destroying the old one and creating
+        a new one. It overrides the method from the BaseInputTester class to handle
+        the keyboard-specific window attributes.
+
+        Regular cleanup helps prevent resource leaks and keeps the testing environment
+        stable during long test runs.
+
+        How it works:
+        -----------
+        1. Logs that cleanup is starting
+        2. Destroys the current transparent window if it exists
+        3. Sets both window handles to None
+        4. Waits briefly to ensure cleanup is complete
+        5. Creates a new transparent window
+        6. Updates the timestamp of when cleanup last occurred
+        7. Logs that cleanup is complete
+        """
+        self.logger.info("Performing window cleanup...")
+        if self.transparent_window:
+            win32gui.DestroyWindow(self.transparent_window)
+            self.transparent_window = None
+            self.test_window = None
+
+        # Short delay to ensure cleanup completes
+        time.sleep(0.5)
+
+        # Create a new window
+        self.create_test_window()
+        self.last_cleanup_time = time.time()
+        self.logger.info("Window cleanup completed")
+
+
+if __name__ == "__main__":
+    """
+    Main entry point for the SafeKeyboardTester script.
+
+    What does this section do?
+    ------------------------
+    This section runs when the script is executed directly (as opposed to being
+    imported as a module in another script). It:
+
+    1. Processes any command-line arguments
+    2. Creates an instance of SafeKeyboardTester
+    3. Starts the testing process
+    4. Handles any exceptions that occur during testing
+
+    Command-line arguments can be used to override the default time intervals
+    between simulated events, allowing quick adjustment of testing speed without
+    modifying the configuration file.
+
+    How it works:
+    -----------
+    1. Imports the sys module for accessing command-line arguments
+    2. Tries to parse min and max interval values from command-line arguments
+    3. Finds the configuration file in the same directory as the script
+    4. Creates a SafeKeyboardTester instance with the configuration
+    5. Starts the testing process, passing any custom intervals
+    6. Catches and logs any exceptions that occur
+
+    To use this script from the command line:
+    python skt-1.4.py [min_interval] [max_interval]
+
+    For example:
+    python skt-1.4.py 0.5 2.0
+
+    This would run the tester with events occurring every 0.5 to 2.0 seconds.
+    """
+    import sys
+
+    # Parse command line arguments for min/max intervals (optional)
+    min_interval = None
+    max_interval = None
+
+    if len(sys.argv) > 1:
+        try:
+            min_interval = float(sys.argv[1])
+            if len(sys.argv) > 2:
+                max_interval = float(sys.argv[2])
+        except ValueError:
+            print("Invalid interval argument. Using config file values.")
+
+    # Find config file in the same directory as the script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "skt.config")
+
+    # Create tester instance
+    tester = SafeKeyboardTester(config_path if os.path.exists(config_path) else None)
+
+    try:
+        tester.start_testing(min_interval, max_interval)
+    except Exception as e:
+        logging.error(f"\nAn error occurred: {e}")
+        raise

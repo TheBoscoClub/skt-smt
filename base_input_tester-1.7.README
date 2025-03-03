@@ -1,0 +1,743 @@
+# base_input_tester.py
+import win32api
+import win32gui
+import win32con
+import random
+import time
+from ctypes import (
+    windll,
+    Structure,
+    c_long,
+    byref,
+    c_ulong,
+)
+import threading
+from contextlib import contextmanager
+import logging
+import sys
+from datetime import datetime
+import os
+import psutil
+import json
+
+"""
+BaseInputTester - Base class for isolated input testing utilities.
+
+This module provides a foundation for creating testing environments that simulate
+how humans interact with computers through input devices like keyboards and mice.
+
+What does this file do?
+-----------------------
+Think of this file as the blueprint for building different types of input testing tools.
+Just like how the foundation of a house supports everything built on top of it, this
+file contains the basic structures needed for any input testing program.
+
+It handles essential tasks like:
+1. Creating special windows that can receive input without disrupting other programs
+2. Managing computer resources to make sure our tests don't slow down the system
+3. Recording detailed logs of everything that happens during testing
+4. Setting up a testing schedule that simulates realistic human behavior
+
+For new Python programmers:
+--------------------------
+- A "class" is like a template for creating objects with specific properties and behaviors
+- This file defines a "base class" which other, more specialized classes will build upon
+- When we "inherit" from a base class, we get all its features while adding our own
+
+This file is not meant to be used directly. Instead, more specialized testing classes
+(like keyboard or mouse testers) will use this as their foundation.
+"""
+
+# Make sure that GetWindowThreadProcessId(hwnd) is defined
+if not hasattr(win32gui, "GetWindowThreadProcessId"):
+    def GetWindowThreadProcessId(hwnd):
+        """
+        Replacement for win32gui.GetWindowThreadProcessId using ctypes.
+
+        What does this function do?
+        --------------------------
+        This function helps us identify which program "owns" a particular window.
+        It's like finding out which company owns a specific store in a shopping mall.
+
+        When we're working with windows on a computer, we often need to know which
+        program created a certain window. This function gets that information for us.
+
+        If the regular way to get this information isn't available, this function
+        provides an alternative way to do it.
+
+        Technical details:
+        -----------------
+        Args:
+            hwnd (int): Handle to the window (a unique number that identifies a specific window).
+
+        Returns:
+            tuple: A pair of numbers containing (thread_id, process_id), which identify
+                  which parts of which program created the window.
+        """
+        pid = c_ulong()
+        tid = windll.user32.GetWindowThreadProcessId(hwnd, byref(pid))
+        return tid, pid.value
+
+    # Add the function to win32gui module
+    win32gui.GetWindowThreadProcessId = GetWindowThreadProcessId
+
+
+class BaseInputTester:
+    """
+    Base class for input testing in isolated environments.
+
+    What is this class?
+    ------------------
+    This class is like a master plan for building input testing tools. It doesn't do the
+    actual testing itself, but provides all the common functionality that any input
+    tester would need.
+
+    Imagine you wanted to build different types of vehicles (cars, trucks, boats).
+    They all need some common parts like engines and controls. This class is like
+    the blueprint that includes all those common parts, so you don't have to
+    redesign them for each new vehicle.
+
+    When to use this class:
+    ----------------------
+    You won't use this class directly. Instead, you'll create more specific classes
+    that "inherit" from this one. For example, you might create a KeyboardTester
+    class that builds on this foundation but adds keyboard-specific features.
+
+    Key features this class provides:
+    -------------------------------
+    - Window management: Creates special windows that can receive input without
+      affecting other programs running on the computer
+    - Resource monitoring: Keeps track of how much memory and CPU power is being used
+    - Logging: Records detailed information about what happens during testing
+    - Testing schedule: Controls when and how input events are generated
+
+    Attributes:
+        running (bool): A flag that indicates whether the test is currently running,
+                        like an on/off switch for the entire testing process.
+
+        test_window (int): A special number (called a handle) that identifies the
+                          window we've created for testing. This window receives
+                          all our simulated input.
+
+        event_count (int): A counter that keeps track of how many input events
+                          (like key presses or mouse movements) we've generated.
+
+        config (dict): A collection of settings loaded from a configuration file.
+                      These settings control various aspects of the testing process.
+
+        cleanup_interval (int): How often (in seconds) we should refresh our test
+                               window to prevent any problems from building up.
+
+        last_cleanup_time (float): When we last refreshed our test window.
+
+        message_process_interval (int): How often (in seconds) we should process
+                                      any waiting messages for our window.
+
+        last_message_process_time (float): When we last processed messages.
+
+        resource_monitor_interval (int): How often (in seconds) we should check
+                                        how much memory and CPU we're using.
+
+        last_resource_monitor_time (float): When we last checked resource usage.
+
+        process (psutil.Process): A special object that gives us information about
+                                 our current program, used for monitoring resources.
+    """
+
+    def __init__(self, config_file=None):
+        """
+        Initialize the BaseInputTester with default or config file parameters.
+
+        What does this method do?
+        ------------------------
+        This method sets up a new input tester with all the necessary starting values.
+        It's like preparing a new car before driving it - filling the tank, checking
+        the oil, adjusting the mirrors, etc.
+
+        If you provide a configuration file, it will use settings from that file.
+        Otherwise, it will use reasonable default values.
+
+        Args:
+            config_file (str, optional): Path to a configuration file. If provided,
+                                         settings will be loaded from this file.
+                                         If not provided, default settings will be used.
+                                         Defaults to None.
+
+        How it works:
+        ------------
+        1. Sets initial values for tracking variables
+        2. Loads configuration from a file (if provided)
+        3. Sets up timers for various maintenance tasks
+        4. Prepares for resource monitoring
+        5. Sets up the logging system to record what happens
+        """
+        self.running = False
+        self.test_window = None
+        self.event_count = 0
+
+        # Load configuration if file provided, otherwise use defaults
+        self.config = self.load_config(config_file)
+
+        # Window management timers
+        self.cleanup_interval = self.config.get("cleanup_interval", 600)  # 10 minutes
+        self.last_cleanup_time = time.time()
+
+        # Message processing timers
+        self.message_process_interval = self.config.get("message_process_interval", 5)
+        self.last_message_process_time = time.time()
+
+        # Resource monitoring timers
+        self.resource_monitor_interval = self.config.get("resource_monitor_interval", 30)
+        self.last_resource_monitor_time = time.time()
+
+        # Process for resource monitoring
+        self.process = psutil.Process(os.getpid())
+
+        # Set up logging
+        self.setup_logging()
+
+    def load_config(self, config_file):
+        """
+        Load configuration from a JSON file.
+
+        What does this method do?
+        ------------------------
+        This method reads settings from a JSON configuration file. JSON is a common
+        format for storing settings and data in a structured way.
+
+        Think of it like reading a recipe book - the JSON file contains the "recipe"
+        for how our tester should behave, and this method reads that recipe and
+        prepares it for use.
+
+        Args:
+            config_file (str): Path to the configuration file to load.
+
+        Returns:
+            dict: A dictionary containing all the configuration parameters.
+                 A dictionary is like a lookup table where each setting has a name
+                 and a value.
+
+        How it works:
+        ------------
+        1. Defines reasonable default values for all settings
+        2. If a config file is provided and exists:
+           a. Tries to read and parse the file
+           b. Combines the default settings with the ones from the file
+           c. Returns the combined settings
+        3. If there's a problem or no file is provided, returns just the default settings
+        """
+        default_config = {
+            "cleanup_interval": 600,  # 10 minutes
+            "message_process_interval": 5,  # 5 seconds
+            "resource_monitor_interval": 30,  # 30 seconds
+            "log_level": "INFO",
+        }
+
+        if config_file and os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                # Merge with defaults (to ensure all required keys exist)
+                merged_config = default_config.copy()
+                merged_config.update(config)
+                return merged_config
+            except Exception as e:
+                print(f"Error loading config file: {e}")
+                return default_config
+        return default_config
+
+    def setup_logging(self):
+        """
+        Set up the logging system for the input tester.
+
+        What does this method do?
+        ------------------------
+        This method creates a system for recording what happens during testing.
+        It's like setting up a journal or diary to keep track of everything the
+        program does.
+
+        The logs are saved to files with timestamps in their names, making it easy
+        to look back and see what happened during a particular test run.
+
+        How it works:
+        ------------
+        1. Finds the directory where the script is located
+        2. Creates a 'logs' folder inside that directory (if it doesn't already exist)
+        3. Creates a log file with a name based on the current time and the type of tester
+        4. Sets up the logging system to write to both that file and the console
+        5. Records some initial information about the test session
+
+        Why this is important:
+        --------------------
+        Logging helps us understand what happened during testing, especially if
+        something goes wrong. It's like having a black box recorder on an airplane
+        that captures everything that happens.
+        """
+        # Get script directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        logs_dir = os.path.join(script_dir, "logs")
+
+        # Create logs directory relative to script location
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
+
+        # Create log filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = os.path.join(logs_dir, f"{self.__class__.__name__.lower()}_{timestamp}.log")
+
+        # Configure logging
+        log_level = getattr(logging, self.config.get("log_level", "INFO"))
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            handlers=[logging.FileHandler(log_filename), logging.StreamHandler()]
+        )
+
+        logging.info(f"Starting new {self.__class__.__name__} session")
+        logging.info(f"Log file: {os.path.abspath(log_filename)}")
+        logging.info(f"Configuration: {self.config}")
+
+    def window_proc(self, hwnd, msg, wparam, lparam):
+        """
+        Window procedure to handle window messages.
+
+        What does this method do?
+        ------------------------
+        This method responds to messages that Windows sends to our test window.
+        It's like having a receptionist who answers the phone and forwards messages.
+
+        In Windows, programs communicate with windows by sending "messages" - special
+        notifications about things like mouse clicks, key presses, or system events.
+        This function receives those messages and decides what to do with them.
+
+        In this case, we're simply passing all messages to the default Windows handler,
+        but more specialized testers might do additional processing here.
+
+        Args:
+            hwnd (int): Handle to the window receiving the message.
+            msg (int): The message code, which tells us what kind of message it is.
+            wparam (int): Additional information about the message.
+            lparam (int): Additional information about the message.
+
+        Returns:
+            int: The result of processing the message.
+        """
+        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
+
+    def create_test_window(self):
+        """
+        Create a test window for input event simulation.
+
+        What does this method do?
+        ------------------------
+        This method should create a special window that will be used to simulate
+        input events. However, this is just a placeholder - it doesn't actually
+        create a window itself.
+
+        This is an "abstract method" that needs to be implemented by any class
+        that inherits from BaseInputTester. It's like a sign that says "Construction
+        Needed Here" - it marks a spot where more specific code needs to be added.
+
+        For example, a KeyboardTester might create a window that can receive keyboard
+        input, while a MouseTester might create a window that can track mouse movement.
+
+        Raises:
+            NotImplementedError: This error occurs if someone tries to use this method
+                                without properly implementing it in a subclass.
+        """
+        raise NotImplementedError("Subclasses must implement create_test_window()")
+
+    def process_messages(self):
+        """
+        Process any pending window messages to prevent queue buildup.
+
+        What does this method do?
+        ------------------------
+        This method checks for and processes any messages waiting for our test window.
+        It's like checking and responding to a backlog of emails to make sure nothing
+        important gets missed.
+
+        In Windows, messages can build up in a queue if they're not processed regularly.
+        This can lead to the system becoming unresponsive or even crashing. This method
+        helps prevent that by periodically processing all waiting messages.
+
+        How it works:
+        ------------
+        1. Checks if our test window exists
+        2. Creates a structure to hold message information
+        3. Repeatedly checks for messages and processes them until there are none left
+        4. Each message is translated and dispatched to the appropriate handler
+
+        Why this is important:
+        --------------------
+        Regular message processing keeps the system responsive and prevents resource
+        problems that could interfere with our testing.
+        """
+        if not self.test_window:
+            return
+
+        # Create a MSG structure
+        msg = win32gui.MSG()
+
+        # Use PeekMessage with the correct number of arguments
+        while win32gui.PeekMessage(msg, self.test_window, 0, 0, win32con.PM_REMOVE):
+            win32gui.TranslateMessage(msg)
+            win32gui.DispatchMessage(msg)
+
+    def cleanup_window(self):
+        """
+        Perform periodic cleanup by destroying and recreating the window.
+
+        What does this method do?
+        ------------------------
+        This method refreshes our test window by destroying the old one and creating
+        a new one. It's like closing and reopening a program that's starting to get
+        sluggish - the fresh start helps prevent problems.
+
+        Over time, windows can accumulate resources and potentially develop issues.
+        Regular cleanup helps ensure stable, consistent testing over long periods.
+
+        How it works:
+        ------------
+        1. Logs that cleanup is starting
+        2. Destroys the current test window if it exists
+        3. Waits briefly to ensure cleanup is complete
+        4. Creates a new test window
+        5. Updates the timestamp of when cleanup last occurred
+        6. Logs that cleanup is complete
+
+        Why this is important:
+        --------------------
+        Regular window cleanup prevents resource leaks and ensures the testing
+        environment remains stable during extended test runs.
+        """
+        logging.info("Performing window cleanup...")
+        if self.test_window:
+            win32gui.DestroyWindow(self.test_window)
+            self.test_window = None
+
+        # Short delay to ensure cleanup completes
+        time.sleep(0.5)
+
+        # Create a new window
+        self.create_test_window()
+        self.last_cleanup_time = time.time()
+        logging.info("Window cleanup completed")
+
+    def monitor_resources(self):
+        """
+        Monitor and log system resource usage.
+
+        What does this method do?
+        ------------------------
+        This method checks how much CPU power and memory our program is using and
+        records this information in the log. It's like checking the fuel gauge and
+        engine temperature while driving a car.
+
+        Monitoring resources helps us understand the performance impact of our testing
+        and can alert us if the program starts using too much CPU or memory.
+
+        How it works:
+        ------------
+        1. Gets the current CPU usage percentage
+        2. Gets the current memory usage in megabytes
+        3. Logs both values with appropriate formatting
+        4. Updates the timestamp of when monitoring last occurred
+        5. Handles any errors that might occur during monitoring
+
+        Why this is important:
+        --------------------
+        Resource monitoring helps ensure our testing doesn't overwhelm the system
+        and provides valuable data for optimizing performance.
+        """
+        try:
+            # Get CPU percent (interval=None means "since last call")
+            cpu_percent = self.process.cpu_percent(interval=0.1)
+
+            # Get memory info
+            memory_info = self.process.memory_info()
+            memory_mb = memory_info.rss / (1024 * 1024)  # Convert to MB
+
+            # Log resource usage
+            logging.info(f"Resource usage - CPU: {cpu_percent:.1f}%, Memory: {memory_mb:.2f} MB")
+
+            # Update last monitor time
+            self.last_resource_monitor_time = time.time()
+        except Exception as e:
+            logging.error(f"Error monitoring resources: {e}")
+
+    def check_and_process_messages(self):
+        """
+        Check if it's time to process messages and do so if needed.
+
+        What does this method do?
+        ------------------------
+        This method checks if enough time has passed since we last processed messages
+        for our test window. If it has, it processes any waiting messages.
+
+        It's like checking your mailbox on a schedule - maybe you decide to check
+        for new mail every hour rather than constantly.
+
+        How it works:
+        ------------
+        1. Gets the current time
+        2. Compares it with when we last processed messages
+        3. If enough time has passed (based on our configuration):
+           a. Calls the process_messages method to handle any waiting messages
+           b. Updates the timestamp of when processing last occurred
+
+        Why this is important:
+        --------------------
+        Regular but not constant message processing strikes a balance between
+        keeping the system responsive and not wasting resources checking too frequently.
+        """
+        current_time = time.time()
+        if current_time - self.last_message_process_time >= self.message_process_interval:
+            self.process_messages()
+            self.last_message_process_time = current_time
+
+    def check_and_cleanup_window(self):
+        """
+        Check if it's time to perform window cleanup and do so if needed.
+
+        What does this method do?
+        ------------------------
+        This method checks if enough time has passed since we last refreshed our
+        test window. If it has, it performs a cleanup by destroying and recreating
+        the window.
+
+        It's like performing regular maintenance on a machine - you don't do it
+        constantly, but you do it on a schedule to keep everything running smoothly.
+
+        How it works:
+        ------------
+        1. Gets the current time
+        2. Compares it with when we last cleaned up the window
+        3. If enough time has passed (based on our configuration):
+           a. Calls the cleanup_window method to refresh the window
+
+        Why this is important:
+        --------------------
+        Scheduled window cleanup prevents resource buildup without the overhead
+        of cleaning up too frequently.
+        """
+        current_time = time.time()
+        if current_time - self.last_cleanup_time >= self.cleanup_interval:
+            self.cleanup_window()
+
+    @property
+    def logger(self):
+        """
+        Get the logger instance.
+
+        What does this method do?
+        ------------------------
+        This method provides access to the logging system used to record information
+        about the testing process. It's like having a convenient way to access the
+        journal where we're recording everything that happens.
+
+        The @property decorator makes this method act like an attribute, so you can
+        access it using "self.logger" instead of "self.logger()".
+
+        Returns:
+            logging.Logger: The logger instance that can be used to record information.
+
+        Why this is important:
+        --------------------
+        Having a consistent way to access the logger helps ensure that all parts of
+        the code log information in the same way, making the logs more uniform and
+        easier to analyze.
+        """
+        return logging.getLogger()
+
+    @contextmanager
+    def test_window_context(self):
+        """
+        Context manager for the test window.
+
+        What does this method do?
+        ------------------------
+        This method creates a special environment for managing the test window. It ensures
+        that the window is properly created at the start and properly destroyed at the end,
+        even if errors occur.
+
+        It's like having an automatic system that sets up a workspace for you and then
+        cleans it up afterward, regardless of whether your work goes smoothly or encounters
+        problems.
+
+        The @contextmanager decorator allows this method to be used with Python's "with"
+        statement, which provides a clean syntax for setup and cleanup operations.
+
+        How it works:
+        ------------
+        1. Creates the test window
+        2. Yields control back to the caller (letting them use the window)
+        3. When the caller is done, ensures the window is destroyed
+        4. Logs that the window was destroyed
+
+        Why this is important:
+        --------------------
+        Using a context manager helps prevent resource leaks by ensuring windows are
+        always properly destroyed, even when errors occur during testing.
+        """
+        try:
+            self.create_test_window()
+            yield
+        finally:
+            if self.test_window:
+                win32gui.DestroyWindow(self.test_window)
+                self.test_window = None
+                logging.info("Window destroyed during context exit")
+
+    def simulate_input_event(self):
+        """
+        Simulate a random input event.
+
+        What does this method do?
+        ------------------------
+        This method should generate and simulate a random input event appropriate
+        for the specific type of tester. However, this is just a placeholder - it
+        doesn't actually simulate any events itself.
+
+        This is an "abstract method" that needs to be implemented by any class
+        that inherits from BaseInputTester. It's like a sign that says "Action
+        Needed Here" - it marks a spot where more specific code needs to be added.
+
+        For example, a KeyboardTester might simulate key presses, while a MouseTester
+        might simulate mouse movements or clicks.
+
+        Raises:
+            NotImplementedError: This error occurs if someone tries to use this method
+                                without properly implementing it in a subclass.
+        """
+        raise NotImplementedError("Subclasses must implement simulate_input_event()")
+
+    def start_testing(self, min_interval=None, max_interval=None):
+        """
+        Start the input testing process.
+
+        What does this method do?
+        ------------------------
+        This method starts the actual testing process, which will continue until
+        stopped. It creates a separate thread for simulating input events and sets
+        up the main thread to monitor for the Escape key to stop testing.
+
+        It's like starting a machine that will automatically generate input events
+        at random intervals, and providing a stop button (the Escape key) that can
+        be pressed at any time.
+
+        Args:
+            min_interval (float, optional): Minimum time between events in seconds.
+                                           If None, uses the value from config.
+                                           Defaults to None.
+            max_interval (float, optional): Maximum time between events in seconds.
+                                           If None, uses the value from config.
+                                           Defaults to None.
+
+        How it works:
+        ------------
+        1. Sets up the intervals for event generation
+        2. Initializes all tracking variables
+        3. Performs initial resource monitoring
+        4. Creates and starts a separate thread for event simulation
+        5. Monitors for the Escape key in the main thread
+        6. When Escape is pressed, stops the testing process
+        7. Performs final resource monitoring and logging
+
+        Why this is important:
+        --------------------
+        This coordinated approach allows for continuous testing with monitoring
+        and a clean way to stop when desired.
+        """
+        # Use provided intervals or fall back to config values
+        min_interval = min_interval or self.config.get("event_interval_min", 1.0)
+        max_interval = max_interval or self.config.get("event_interval_max", 5.0)
+
+        self.logger.info(f"Starting {self.__class__.__name__} with intervals: min={min_interval}s, max={max_interval}s")
+        self.logger.info("Press 'Esc' to stop testing")
+
+        self.running = True
+        self.event_count = 0
+        self.last_cleanup_time = time.time()
+        self.last_message_process_time = time.time()
+        self.last_resource_monitor_time = time.time()
+
+        # Initial resource monitoring
+        self.monitor_resources()
+
+        def testing_loop():
+            """
+            Inner function that runs the continuous input simulation.
+
+            What does this function do?
+            --------------------------
+            This function is the heart of the testing process. It runs in a separate
+            thread and continuously generates input events with random delays between them.
+
+            It's like having a robot that repeatedly performs actions (typing, moving the
+            mouse, etc.) at varying speeds to simulate real human interaction.
+
+            How it works:
+            ------------
+            1. Creates a test window using the context manager
+            2. While the testing flag is True:
+               a. Simulates an input event
+               b. Processes any waiting messages
+               c. Checks if window cleanup or resource monitoring is needed
+               d. Waits for a random amount of time before the next event
+               e. During waiting, periodically checks if messages need processing
+            3. Handles any errors that occur during testing
+            """
+            with self.test_window_context():
+                while self.running:
+                    try:
+                        # Simulate input event
+                        self.simulate_input_event()
+
+                        # Process messages after each event
+                        self.process_messages()
+
+                        # Check for window cleanup and resource monitoring
+                        self.check_and_cleanup_window()
+                        self.check_and_monitor_resources()
+
+                        # Wait until next event
+                        interval = random.uniform(min_interval, max_interval)
+                        self.logger.info(f"Waiting {interval:.2f} seconds until next event...")
+
+                        # Break the waiting period into chunks to allow for more responsive termination
+                        wait_end_time = time.time() + interval
+                        while time.time() < wait_end_time and self.running:
+                            time.sleep(0.1)
+                            # Check if we should process messages during this wait
+                            self.check_and_process_messages()
+
+                    except Exception as e:
+                        self.logger.error(f"Error in testing loop: {e}")
+                        # Allow recovery from transient errors
+                        time.sleep(5)
+                        # Recreate window if needed
+                        if not self.test_window:
+                            self.create_test_window()
+
+        # Create and start the testing thread
+        test_thread = threading.Thread(target=testing_loop)
+        test_thread.daemon = True
+        test_thread.start()
+
+        try:
+            while self.running:
+                if win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8000:
+                    break
+                time.sleep(0.1)
+        finally:
+            self.running = False
+            test_thread.join(timeout=1.0)
+
+        # Final resource monitoring
+        self.monitor_resources()
+
+        self.logger.info(f"Testing completed. Total events simulated: {self.event_count}")
+
+# Note: There appears to be duplicated code at the end of the file.
+# This should be removed to avoid confusion, as it appears to be accidental.

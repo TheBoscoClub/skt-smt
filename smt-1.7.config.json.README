@@ -1,0 +1,95 @@
+{
+    /*
+    SafeMouseTester Configuration File (smt.config)
+
+    What is this file?
+    -----------------
+    This is a configuration file in JSON format that controls how the SafeMouseTester
+    behaves. Think of it as a list of settings or preferences that tell the program
+    exactly how to simulate mouse movements and clicks.
+
+    JSON stands for JavaScript Object Notation, and it's a common way to store settings
+    in a format that both humans and computers can read. In JSON:
+    - Settings are organized as "key": "value" pairs
+    - Keys are always in quotes and followed by a colon
+    - Text values are in quotes
+    - Number values don't need quotes
+    - Lists are in square brackets [ ]
+    - Groups of related settings are in curly braces { }
+
+    For new JSON users:
+    ------------------
+    - Commas separate each setting, but there's no comma after the last item in a list
+      or the last setting in a group
+    - Indentation isn't required but makes the file easier to read
+    - The file must be correctly formatted for the program to read it
+    */
+
+    // Basic system management settings
+    "cleanup_interval": 600,        // How often to refresh the test window (in seconds)
+    "message_process_interval": 5,  // How often to process Windows messages (in seconds)
+    "resource_monitor_interval": 30, // How often to check system resources (in seconds)
+    "log_level": "INFO",            // How detailed the logs should be (INFO, DEBUG, WARNING, etc.)
+
+    // Event timing settings
+    "event_interval_min": 0.5,      // Minimum time between mouse events (in seconds)
+    "event_interval_max": 3.0,      // Maximum time between mouse events (in seconds)
+
+    // Mouse movement distance settings
+    "movement_min_distance": 10,    // Smallest allowed movement (in pixels)
+    "movement_max_distance": 100,   // Largest allowed movement (in pixels)
+
+    // Probability settings for different mouse actions
+    "click_probability": 0.2,       // Chance of clicking (20% or 0.2)
+    "scroll_probability": 0.1,      // Chance of scrolling (10% or 0.1)
+    "double_click_probability": 0.05, // Chance of double-clicking (5% or 0.05)
+
+    // Different types of movements the mouse can make
+    "movement_patterns": [
+        "random",    // Move in any direction without a specific target
+        "linear",    // Move in a straight line
+        "circular",  // Move in a circle
+        "targeted"   // Move toward a specific point on screen
+    ],
+
+    // How likely each movement pattern is to be chosen
+    // These numbers are relative weights (not exact percentages)
+    "movement_pattern_weights": [0.4, 0.2, 0.2, 0.2],
+    // This means:
+    // - Random movement: 40% chance (0.4 out of 1.0 total)
+    // - Linear movement: 20% chance (0.2 out of 1.0 total)
+    // - Circular movement: 20% chance (0.2 out of 1.0 total)
+    // - Targeted movement: 20% chance (0.2 out of 1.0 total)
+
+    // Settings for circular movements
+    "circular_min_radius": 20,      // Smallest possible circle radius (in pixels)
+    "circular_max_radius": 150,     // Largest possible circle radius (in pixels)
+    "circular_min_steps": 8,        // Minimum number of points used to create the circle
+    "circular_max_steps": 24,       // Maximum number of points used to create the circle
+
+    // Settings for linear (straight line) movements
+    "linear_min_steps": 5,          // Minimum number of points used to create the line
+    "linear_max_steps": 20,         // Maximum number of points used to create the line
+
+    // Special target points for "targeted" movement
+    // These are positions on screen where the mouse is likely to move
+    "targeted_targets": [
+        {"x_ratio": 0.5, "y_ratio": 0.5, "weight": 5},    // Center of screen (high weight)
+        {"x_ratio": 0.25, "y_ratio": 0.25, "weight": 2},  // Top-left quadrant
+        {"x_ratio": 0.75, "y_ratio": 0.25, "weight": 2},  // Top-right quadrant
+        {"x_ratio": 0.25, "y_ratio": 0.75, "weight": 2},  // Bottom-left quadrant
+        {"x_ratio": 0.75, "y_ratio": 0.75, "weight": 2}   // Bottom-right quadrant
+    ],
+    // What do these numbers mean?
+    // - x_ratio and y_ratio are percentages of screen width/height (0.5 = 50% = middle)
+    // - weight determines how likely that point is to be chosen (higher = more likely)
+    // - Center has weight 5, corners have weight 2, so center is 2.5x more likely
+
+    // Settings for mouse button types
+    "button_types": ["left", "right", "middle"],  // The types of mouse buttons to simulate
+    "button_weights": [0.7, 0.2, 0.1]            // How often each button is used
+    // This means:
+    // - Left button: 70% of clicks
+    // - Right button: 20% of clicks
+    // - Middle button: 10% of clicks
+}
