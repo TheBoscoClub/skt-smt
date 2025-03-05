@@ -1,0 +1,80 @@
+{
+    /*
+    SafeKeyboardTester Configuration File (skt.config)
+
+    What is this file?
+    -----------------
+    This is a configuration file in JSON format that controls how the SafeKeyboardTester
+    behaves. Think of it as a list of settings or preferences that tell the program
+    exactly how to simulate keyboard input.
+
+    JSON stands for JavaScript Object Notation, and it's a common way to store settings
+    in a format that both humans and computers can read. In JSON:
+    - Settings are organized as "key": "value" pairs
+    - Keys are always in quotes and followed by a colon
+    - Text values are in quotes
+    - Number values don't need quotes
+    - Lists are in square brackets [ ]
+    - Groups of related settings are in curly braces { }
+
+    For new JSON users:
+    ------------------
+    - Commas separate each setting, but there's no comma after the last item in a list
+      or the last setting in a group
+    - Indentation isn't required but makes the file easier to read
+    - The file must be correctly formatted for the program to read it
+    */
+
+    // Basic system management settings
+    "cleanup_interval": 600,         // How often to refresh the test window (in seconds)
+    "message_process_interval": 5,   // How often to process Windows messages (in seconds)
+    "resource_monitor_interval": 30, // How often to check system resources (in seconds)
+    "log_level": "INFO",             // How detailed the logs should be (INFO, DEBUG, WARNING, etc.)
+
+    // Typing speed settings
+    "key_interval_min": 0.1,         // Minimum time between key presses (in seconds)
+    "key_interval_max": 0.3,         // Maximum time between key presses (in seconds)
+
+    // Event timing settings
+    "event_interval_min": 1.0,       // Minimum time between typing events (in seconds)
+    "event_interval_max": 30.0,      // Maximum time between typing events (in seconds)
+
+    // Word length settings
+    "word_length_min": 3,            // Shortest random word to generate (in characters)
+    "word_length_max": 8,            // Longest random word to generate (in characters)
+
+    // Human-like typing behavior settings
+    "typo_probability": 0.05,        // Chance of making a typo (5% or 0.05)
+    "correction_probability": 0.8,   // Chance of correcting a typo (80% or 0.8)
+    "capitalization_probability": 0.2, // Chance of capitalizing a word (20% or 0.2)
+    "common_words_probability": 0.7, // Chance of using a common word vs random (70% or 0.7)
+
+    // Special key settings
+    "special_key_probability": 0.05, // Chance of pressing a special key (5% or 0.05)
+    "space_after_word_probability": 0.9, // Chance of typing space after a word (90% or 0.9)
+
+    // List of common English words to use when simulating typing
+    // These are used when "common_word" typing pattern is selected
+    "common_words": [
+        "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
+        "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+        "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
+        "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
+        "so", "up", "out", "if", "about", "who", "get", "which", "go", "me",
+        "when", "make", "can", "like", "time", "no", "just", "him", "know", "take",
+        "people", "into", "year", "your", "good", "some", "could", "them", "see", "other",
+        "than", "then", "now", "look", "only", "come", "its", "over", "think", "also",
+        "back", "after", "use", "two", "how", "our", "work", "first", "well", "way"
+    ],
+
+    // Different types of typing patterns the keyboard can simulate
+    "typing_patterns": [
+        "common_word",      // Type a word from the common words list
+        "random_word",      // Type a completely random sequence of letters
+        "sentence",         // Type a complete sentence with multiple words
+        "code_snippet",     // Type a short piece of programming code
+        "number_sequence"   // Type a sequence of numbers
+    ]
+    // Note: Unlike the mouse tester, the keyboard tester doesn't have explicit weights
+    // for these patterns - they're all equally likely to be chosen by default
+}
