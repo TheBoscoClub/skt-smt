@@ -1,0 +1,36 @@
+# MANIFEST.in - Specify additional files to include in distribution
+
+# Documentation
+include README.md
+include RELEASE_NOTES_v2.0.md
+include SAFETY_REFACTORING_GUIDE.md
+include github-readme.md
+
+# License files
+include LICENSE.txt
+include skmt.LICENSE
+include GPL-3_license_Input_Testing_Utility_Suite.md
+
+# Configuration files
+include *.config.json
+include *.config.json.README
+
+# README files
+include *.README
+
+# Documentation files
+include *.odt
+
+# Requirements
+include requirements.txt
+
+# Exclude unnecessary files
+exclude .gitignore
+exclude .gitattributes
+recursive-exclude .git *
+recursive-exclude .github *
+recursive-exclude logs *
+recursive-exclude __pycache__ *
+recursive-exclude *.pyc
+recursive-exclude *.pyo
+recursive-exclude *.pyd
