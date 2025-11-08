@@ -319,6 +319,7 @@ __pycache__/
 # Python build and distribution
 dist/
 build/
+build_standalone/
 *.egg-info/
 release_v*/
 *.whl
