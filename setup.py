@@ -45,17 +45,7 @@ setup(
     ],
     keywords="testing, input, keyboard, mouse, automation, windows, safety, validation",
     packages=find_packages(),
-    py_modules=[
-        "base_input_tester_2_0",
-        "skt-2.0",
-        "smt-2.0",
-        # Legacy modules for backward compatibility
-        "base_input_tester_1.7",
-        "base_input_tester_1_8",
-        "skt-1.7",
-        "skt-1.8",
-        "smt-1.7",
-    ],
+    # Python scripts included as data files (module names with dashes not supported)
     python_requires=">=3.7",
     install_requires=requirements,
     extras_require={
@@ -67,12 +57,8 @@ setup(
             "mypy>=0.950",
         ],
     },
-    entry_points={
-        "console_scripts": [
-            "safe-mouse-tester=smt-2.0:main",
-            "safe-keyboard-tester=skt-2.0:main",
-        ],
-    },
+    # Entry points removed - use python scriptname.py directly
+    # (Module names with dashes not valid in Python)
     include_package_data=True,
     package_data={
         "": [
