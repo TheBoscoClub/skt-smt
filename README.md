@@ -1,4 +1,13 @@
-Overview of the Suite
+# Safe Keyboard & Mouse Tester (SKT-SMT)
+
+**Version**: 1.7 | **License**: GPL-3 | **Platform**: Windows | **Language**: Python
+**Dependencies**: Python 3.x, pywin32, Windows API
+**Features**: Isolated input simulation, realistic typing patterns, human-like mouse physics, resource monitoring
+
+---
+
+## Overview
+
 This is a software package that allows you to simulate realistic human-like keyboard and mouse input without actually affecting other applications running on the system. It's useful for testing applications, automating repetitive tasks, or for any scenario where you need to generate input events that mimic human behavior.
 Key Components
 
@@ -147,6 +156,56 @@ This software is provided for legitimate testing, development, and educational p
 - Any illegal or unethical use
 
 Users are expected to use this software ethically, responsibly, and in compliance with all applicable laws and regulations.
+
+---
+
+## References & Related Projects
+
+### Input Simulation Tools
+- **PyAutoGUI**: [pyautogui.readthedocs.io](https://pyautogui.readthedocs.io/) - Cross-platform GUI automation
+- **AutoHotkey**: [autohotkey.com](https://www.autohotkey.com/) - Scripting language for Windows automation
+- **Selenium**: [selenium.dev](https://www.selenium.dev/) - Browser automation framework
+- **Robot Framework**: [robotframework.org](https://robotframework.org/) - Generic test automation framework
+
+### Windows API Resources
+- **Windows API Documentation**: [Microsoft Docs](https://docs.microsoft.com/en-us/windows/win32/) - Official Windows API reference
+- **PyWin32 Documentation**: [pywin32.readthedocs.io](https://pywin32.readthedocs.io/) - Python extensions for Windows
+- **Win32 SendInput**: [Microsoft Docs](https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) - Input simulation API
+
+### Testing & QA Resources
+- **OWASP Testing Guide**: [owasp.org/testing](https://owasp.org/www-project-web-security-testing-guide/) - Security testing methodologies
+- **Software Testing Help**: [softwaretestinghelp.com](https://www.softwaretestinghelp.com/) - Testing tutorials and guides
+- **Ministry of Testing**: [ministryoftesting.com](https://www.ministryoftesting.com/) - Testing community and resources
+
+### UI/UX Testing Tools
+- **TestComplete**: [smartbear.com/testcomplete](https://smartbear.com/product/testcomplete/) - Commercial UI testing tool
+- **Ranorex**: [ranorex.com](https://www.ranorex.com/) - Test automation platform
+- **WinAppDriver**: [github.com/microsoft/WinAppDriver](https://github.com/microsoft/WinAppDriver) - Windows Application Driver
+
+### Security Testing Resources
+- **PTES - Penetration Testing Execution Standard**: [pentest-standard.org](http://www.pentest-standard.org/) - Penetration testing methodology
+- **NIST Cybersecurity Framework**: [nist.gov/cyberframework](https://www.nist.gov/cyberframework) - Security standards and guidelines
+- **CIS Controls**: [cisecurity.org/controls](https://www.cisecurity.org/controls) - Cybersecurity best practices
+
+### Human-Computer Interaction
+- **Fitts's Law**: [Wikipedia](https://en.wikipedia.org/wiki/Fitts%27s_law) - Model of human movement for UI design
+- **Nielsen Norman Group**: [nngroup.com](https://www.nngroup.com/) - UX research and consulting
+- **HCI Bibliography**: [hcibib.org](https://hcibib.org/) - Human-Computer Interaction resources
+
+### Legal & Compliance
+- **Computer Fraud and Abuse Act (CFAA)**: [justice.gov](https://www.justice.gov/criminal-ccips/computer-fraud-and-abuse-act) - U.S. computer crime law
+- **GDPR**: [gdpr.eu](https://gdpr.eu/) - European data protection regulation
+- **Responsible Disclosure**: [CERT Guide](https://vuls.cert.org/confluence/display/CVD) - Vulnerability disclosure best practices
+
+### Community & Support
+- **r/softwaretesting**: [reddit.com/r/softwaretesting](https://www.reddit.com/r/softwaretesting/)
+- **r/QualityAssurance**: [reddit.com/r/QualityAssurance](https://www.reddit.com/r/QualityAssurance/)
+- **Stack Overflow - Testing**: [stackoverflow.com/questions/tagged/testing](https://stackoverflow.com/questions/tagged/testing)
+
+### Python Resources
+- **Python Official Documentation**: [docs.python.org](https://docs.python.org/3/)
+- **Real Python**: [realpython.com](https://realpython.com/) - Python tutorials and guides
+- **PyPI**: [pypi.org](https://pypi.org/) - Python Package Index
 
 ---
 
