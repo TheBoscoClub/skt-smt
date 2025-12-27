@@ -27,7 +27,7 @@ This module provides common functionality for creating isolated testing environm
 for input devices like keyboards and mice. It handles window creation and management,
 message processing, resource monitoring, and logging.
 
-Version 1.7 Updates:
+Version 1.8 Updates:
 - Implemented missing check_and_monitor_resources method
 - Removed duplicate code in testing loop
 - Enhanced error handling in configuration loading
@@ -215,7 +215,7 @@ class BaseInputTester:
             handlers=handlers
         )
 
-        self.logger.info(f"Starting new {self.__class__.__name__} session (v1.7)")
+        self.logger.info(f"Starting new {self.__class__.__name__} session (v1.8)")
         self.logger.info(f"Log file: {os.path.abspath(log_filename)}")
         self.logger.info(f"Configuration: {self.config}")
 
