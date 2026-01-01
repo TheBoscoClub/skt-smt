@@ -361,3 +361,28 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# ============================================
+# Security & Privacy (standard across projects)
+# ============================================
+
+# Session files
+exit.*
+
+# Database snapshots
+.snapshots/
+
+# Claude Code instructions (local only)
+CLAUDE.md
+
+# Environment variables
+.env
+.env.local
+
+# Credentials and secrets
+*.pem
+*.key
+*.crt
+credentials.json
+secrets/
+authcode.txt
+*.authcode
