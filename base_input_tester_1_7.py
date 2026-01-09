@@ -6,15 +6,12 @@ import random
 import time
 from ctypes import (
     windll,
-    Structure,
-    c_long,
     byref,
     c_ulong,
 )
 import threading
 from contextlib import contextmanager
 import logging
-import sys
 from datetime import datetime
 import os
 import psutil

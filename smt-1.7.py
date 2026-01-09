@@ -12,7 +12,7 @@ from ctypes import (
     c_long,
     POINTER,
 )
-from base_input_tester_1.7 import BaseInputTester
+from base_input_tester_1_7 import BaseInputTester
 
 """
 SafeMouseTester v1.7 - An advanced utility for testing mouse input in an isolated environment.
@@ -666,8 +666,8 @@ if __name__ == "__main__":
     import sys
     import logging
 
-    print(f"SafeMouseTester v1.7 - Test mouse input in an isolated environment")
-    print(f"Use 'ESC' key to stop testing")
+    print("SafeMouseTester v1.7 - Test mouse input in an isolated environment")
+    print("Use 'ESC' key to stop testing")
 
     # Parse command line arguments for min/max intervals (optional)
     min_interval = None

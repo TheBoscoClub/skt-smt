@@ -6,7 +6,6 @@ import random
 import time
 import string
 import os
-import math
 from ctypes import (
     windll,
     Structure,
@@ -699,8 +698,8 @@ if __name__ == "__main__":
     import sys
     import logging
 
-    print(f"SafeKeyboardTester v1.8 - Test keyboard input in an isolated environment")
-    print(f"Use 'ESC' key to stop testing")
+    print("SafeKeyboardTester v1.8 - Test keyboard input in an isolated environment")
+    print("Use 'ESC' key to stop testing")
 
     # Parse command line arguments for min/max intervals (optional)
     min_interval = None

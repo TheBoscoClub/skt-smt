@@ -6,14 +6,13 @@ import random
 import time
 import string
 import os
-import math
 from ctypes import (
     windll,
     Structure,
     c_long,
     POINTER,
 )
-from base_input_tester_1.7 import BaseInputTester
+from base_input_tester_1_7 import BaseInputTester
 
 """
 SafeKeyboardTester v1.7 - An advanced utility for testing keyboard input in an isolated environment.
@@ -699,8 +698,8 @@ if __name__ == "__main__":
     import sys
     import logging
 
-    print(f"SafeKeyboardTester v1.7 - Test keyboard input in an isolated environment")
-    print(f"Use 'ESC' key to stop testing")
+    print("SafeKeyboardTester v1.7 - Test keyboard input in an isolated environment")
+    print("Use 'ESC' key to stop testing")
 
     # Parse command line arguments for min/max intervals (optional)
     min_interval = None
