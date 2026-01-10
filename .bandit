@@ -1,5 +1,0 @@
-[bandit]
-# Skip B311: Standard pseudo-random generators are appropriate for input simulation
-# This project uses random for realistic typing/mouse patterns, not cryptographic purposes
-skips = B311
-exclude = .snapshots,.git,__pycache__
