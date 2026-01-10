@@ -440,9 +440,6 @@ class SafeMouseTester(BaseInputTester):
         center_x = max(radius, min(self.screen_width - radius, self.current_x))
         center_y = max(radius, min(self.screen_height - radius, self.current_y))
 
-        # Store starting position for logging
-        start_x, start_y = self.current_x, self.current_y
-
         # Move in a circle
         success = True
         for step in range(steps):
