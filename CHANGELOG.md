@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.7.1] - 2026-01-13
+
+### Added
+- `CHANGELOG.md` for version tracking
+- CodeQL semantic code analysis workflow
+- Python security and quality workflow (bandit, ruff, pip-audit)
+- Daily automated security scans
+
+### Fixed
+- Critical fixes from /test audit
+- Remove unused variables (codeql.yml comment fix)
+
+### Changed
+- Pinned Python 3.14.2 via pyenv for reproducible builds
+- Updated .gitignore with local tool config patterns
+
 ## [1.7.0] - 2026-01-09
 
 ### Added
