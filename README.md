@@ -1,8 +1,23 @@
 # Safe Keyboard & Mouse Tester (SKT-SMT)
 
-**Version**: 1.7 | **License**: GPL-3 | **Platform**: Windows | **Language**: Python
+**License**: GPL-3 | **Platform**: Windows | **Language**: Python
 **Dependencies**: Python 3.x, pywin32, Windows API
 **Features**: Isolated input simulation, realistic typing patterns, human-like mouse physics, resource monitoring
+
+### Version History
+
+| Version | Status | Release |
+|---------|--------|---------|
+| ![1](https://img.shields.io/badge/1-brightgreen)![7](https://img.shields.io/badge/7-green)![1](https://img.shields.io/badge/1-darkgreen)![1](https://img.shields.io/badge/1-yellow) | Latest tweak | [v1.7.1.1](https://github.com/greogory/skt-smt/releases/tag/v1.7.1.1) |
+| ![1](https://img.shields.io/badge/1-brightred)![7](https://img.shields.io/badge/7-red)![1](https://img.shields.io/badge/1-darkred) | Prior patch | [v1.7.1](https://github.com/greogory/skt-smt/releases/tag/v1.7.1) |
+| ![1](https://img.shields.io/badge/1-brightred)![7](https://img.shields.io/badge/7-red)![0](https://img.shields.io/badge/0-darkred) | Prior minor | [v1.7.0](https://github.com/greogory/skt-smt/releases/tag/v1.7.0) |
+
+<details>
+<summary>Badge Color Convention</summary>
+
+Each version segment gets its own badge (brightgreen→green→darkgreen→yellow for current, brightred→red→darkred→orange for prior).
+
+</details>
 
 ---
 
