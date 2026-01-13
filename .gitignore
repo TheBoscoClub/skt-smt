@@ -637,3 +637,4 @@ pyproject.toml
 .yamllint.yml
 .markdownlint.*
 setup.cfg
+rnd/ui-test-logs/
