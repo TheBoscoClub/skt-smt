@@ -8,14 +8,14 @@
 
 | Version | Status | Release |
 |---------|--------|---------|
-| ![1](https://img.shields.io/badge/1-brightgreen)![7](https://img.shields.io/badge/7-green)![1](https://img.shields.io/badge/1-darkgreen)![1](https://img.shields.io/badge/1-yellow) | Latest tweak | [v1.7.1.1](https://github.com/greogory/skt-smt/releases/tag/v1.7.1.1) |
-| ![1](https://img.shields.io/badge/1-brightred)![7](https://img.shields.io/badge/7-red)![1](https://img.shields.io/badge/1-darkred) | Prior patch | [v1.7.1](https://github.com/greogory/skt-smt/releases/tag/v1.7.1) |
-| ![1](https://img.shields.io/badge/1-brightred)![7](https://img.shields.io/badge/7-red)![0](https://img.shields.io/badge/0-darkred) | Prior minor | [v1.7.0](https://github.com/greogory/skt-smt/releases/tag/v1.7.0) |
+| ![1](https://img.shields.io/badge/1-brightgreen)![7](https://img.shields.io/badge/7-darkgreen)![1](https://img.shields.io/badge/1-green)![1](https://img.shields.io/badge/1-yellow) | Latest tweak | [v1.7.1.1](https://github.com/greogory/skt-smt/releases/tag/v1.7.1.1) |
+| ![1](https://img.shields.io/badge/1-brightred)![7](https://img.shields.io/badge/7-darkred)![1](https://img.shields.io/badge/1-red) | Prior patch | [v1.7.1](https://github.com/greogory/skt-smt/releases/tag/v1.7.1) |
+| ![1](https://img.shields.io/badge/1-brightred)![7](https://img.shields.io/badge/7-darkred)![0](https://img.shields.io/badge/0-red) | Prior minor | [v1.7.0](https://github.com/greogory/skt-smt/releases/tag/v1.7.0) |
 
 <details>
 <summary>Badge Color Convention</summary>
 
-Each version segment gets its own badge (brightgreen→green→darkgreen→yellow for current, brightred→red→darkred→orange for prior).
+Each segment: `brightgreen → darkgreen → green → yellow` (current) / `brightred → darkred → red → orange` (prior)
 
 </details>
 
