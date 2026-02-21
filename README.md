@@ -1,6 +1,6 @@
 # Safe Keyboard & Mouse Tester (SKT-SMT)
 
-[![CodeFactor](https://www.codefactor.io/repository/github/theboscoclub/skt-smt/badge)](https://www.codefactor.io/repository/github/theboscoclub/skt-smt)
+[![CodeFactor](https://www.codefactor.io/repository/github/theboscoclub/skt-smt/badge)](https://www.codefactor.io/repository/github/theboscoclub/skt-smt) [![codecov](https://codecov.io/gh/TheBoscoClub/skt-smt/graph/badge.svg)](https://codecov.io/gh/TheBoscoClub/skt-smt)
 
 **License**: GPL-3 | **Platform**: Windows | **Language**: Python
 **Dependencies**: Python 3.x, pywin32, Windows API
